@@ -1,0 +1,104 @@
+# Beam Lab
+
+[![Tests](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml/badge.svg)](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml)
+
+A local laser beam profiler with a browser UI and Python camera acquisition. Built and hardware-tested on an Apple Silicon Mac with a **FLIR Firefly FFY-U3-16S2M-DL**, serial **20415440**. A built-in Gaussian beam simulator runs without any camera.
+
+## Install
+
+Python 3.11+ is required:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install .           # or: python -m pip install -r requirements.txt
+brew install aravis               # macOS; on Linux install your distribution's Aravis 0.8 runtime
+```
+
+Aravis is needed only for real cameras. It is discovered under `.vendor/aravis/*/lib`, Homebrew, or the system library path. Set `ARAVIS_LIBRARY` to an explicit library path if needed. On Apple Silicon macOS 26+, `scripts/setup_aravis_local.py` can instead place a checksum-verified Homebrew bottle in the project-local `.vendor/` directory, which is excluded from version control. Camera USB access must be allowed by the host operating system; sandboxed processes may discover no cameras even when USB hardware is attached.
+
+## Run
+
+```sh
+python -m beam_profiler.server    # or: beam-profiler
+```
+
+Open **http://127.0.0.1:8877**, select the FLIR camera, and click **Connect camera**. Close other camera applications first. Use `--port 8878` if the port is busy. Stop with Ctrl-C to release the camera.
+
+To reopen a previously exported frame, its camera settings and dark reference, use `python3 -m beam_profiler.server --restore-snapshot path/to/beam-snapshot.zip`. The same camera must be available. It starts frozen, with the uncertainty window cleared; **Resume** collects new samples. Historical frames are never treated as fresh repeatability data.
+
+The application uses the open-source Aravis GenICam library rather than a vendor SDK such as Spinnaker, and does not modify any installed vendor software.
+
+## Included
+
+- Camera discovery, connection and clean release; explicit simulator source.
+- Native monochrome acquisition, preferring Mono16, then Mono12/10/8.
+- Exposure and gain controls with ranges and accepted values read from hardware.
+- Fixed-scale thermal/grayscale image, centroid crosshair, D4σ ellipse, draggable analysis ROI.
+- Intensity-weighted centroid, sensor-axis and principal-axis D4σ diameters, ellipticity and angle.
+- Single-frame uncertainty from rolling repeatability, optional correlated scale calibration, and an explicit partial uncertainty budget.
+- Integrated X/Y profiles, peak intensity, saturation and clipped-region warnings.
+- Border background subtraction, adjustable noise threshold, averaged dark reference.
+- Freeze/resume and ZIP snapshot export containing raw TIFF, measurement JSON and profile CSVs. An active dark reference is included as float TIFF.
+
+All capture and analysis run locally. The HTTP server binds only to loopback. The camera is opened only when selected and connected. Freeze retains the analyzed frame while acquisition continues to drain incoming buffers; resume displays fresh data. Disconnect releases USB ownership. Camera settings are adjusted in the current session; no camera user set is saved to flash.
+
+## Measurement conventions
+
+Analysis uses native, full-resolution intensity values; preview scaling and the color map do not affect measurements. D4σ means four intensity-weighted standard deviations. For an ideal Gaussian, this equals the 1/e² diameter. It is **not a Gaussian fit**. The ellipse and ellipticity use covariance principal axes; X/Y cards use image axes. Coordinates are relative to the delivered image, starting at the top left with y pointing down. The principal-axis angle is the major-axis direction measured from +x toward +y (clockwise as displayed), in the range −90° to +90°.
+
+Processing subtracts an optional averaged dark reference, then the ROI-border median if enabled. Negative values and signal below the selected noise threshold are discarded. Noise is estimated using the larger of scaled border median absolute deviation and the upper 84.13th-percentile deviation; the latter handles black-clipped camera noise. Widths are withheld for low signal or isolated hot pixels. Saturation is flagged at 99.8% of format full scale, including the left-aligned 10-bit Firefly ADC output in Mono16. Profiles sum corrected intensity; the UI normalizes each plot independently, while CSVs retain actual sums.
+
+The Firefly pixel pitch is **3.45 µm**, from the [manufacturer specification](https://softwareservices.flir.com/FFY-U3-16S2-DL/latest/Model/spec.html). Physical scale is `pixel pitch / magnification`. At 1× this is a sensor-plane result. Verify optical magnification and effective pixel pitch if using camera binning, decimation or resized optical imaging. Unknown models default to pixel units. This version does not change camera binning or hardware ROI; the draggable ROI is analysis-only.
+
+Thresholding, residual background, truncation, saturation and spatially nonuniform illumination affect second moments. Use an appropriate ROI and dark reference, and inspect profiles. These are practical estimates, not a certified ISO 11146 measurement system or an optical power calibration. No M² or propagation measurement is claimed.
+
+Dark references average 8 fresh frames after draining older frames. Block the beam before capture. Changing exposure/gain or switching cameras clears the reference. Capture requires exposure ≤1 s. Export after **Freeze** to retain the exact displayed frame; during live acquisition export uses the latest completed frame atomically.
+
+## Uncertainty estimates
+
+Live results show **± known standard uncertainty (k = 1)** after at least 20 consecutive valid frames, using a rolling 60-frame window by default. Because a card is a single-frame result, the temporal component is the sample standard deviation, **not** the standard error of a mean. Beam motion is included in that spread; correlation and drift are flagged. Saturated, truncated or invalid images reset the window and withhold estimates.
+
+Open **Uncertainty budget & calibration inputs** to inspect window means, temporal spread, scale contributions and the known subtotal. Pixel-pitch and magnification uncertainties are currently unknown and remain “not specified.” Enter them later as absolute standard uncertainties. The propagation includes their correlation and the shared scale covariance between diameters. Fixed-reference errors and residual systematic effects are explicitly outside the budget, so the result stays labeled **partial**.
+
+The export now also contains `uncertainty-samples.csv` and full uncertainty metadata/covariances in `measurement.json`. See [the measurement model and limitations](docs/uncertainty.md) for equations, reset rules, circular-angle handling and references.
+
+## Export format
+
+**Export snapshot** writes one ZIP per frame, using open formats:
+
+| File | Content |
+| --- | --- |
+| `raw.tiff` | Native-bit-depth monochrome frame (8 or 16 bit), unscaled |
+| `dark-reference.tiff` | Averaged dark reference as 32-bit float, only if active |
+| `measurement.json` | UTC timestamp, camera model/serial/format/exposure/gain, analysis settings, all metrics and warnings, full uncertainty result with covariance matrices and field order |
+| `profile_x.csv`, `profile_y.csv` | `position_px,integrated_intensity_dn` over the analysis ROI |
+| `uncertainty-samples.csv` | The exact timestamped per-frame values in the current statistics window |
+
+Lengths are in the unit stated in `metrics.unit` (`µm` with a known pixel pitch, otherwise `px`); centroids are always in pixels. A snapshot can be reopened with `--restore-snapshot` as described above.
+
+## Add cameras
+
+`beam_profiler/cameras/base.py` defines the driver protocol (`open`, `read`, `configure`, `close`). `Frame` carries a 2D native array, full-scale value and pixel-format name. `AravisCamera` supports the GenICam transport and queries the device's actual feature limits. Additional GenICam models may already discover, but need hardware validation; only the Firefly above has been verified. Color/Bayer and packed formats are not accepted by this version.
+
+Add verified model calibration to `cameras/models.py`. To add another SDK, implement the protocol in a new adapter, add discovery and driver selection in `service.py`, and update the camera support dialog. No changes to analysis or rendering are required. All native calls must remain on the acquisition worker thread; buffers must be copied before release. Optional camera features vary by model and should be capability-checked in the adapter.
+
+## Verify
+
+```sh
+python -m pip install '.[test]'
+python -m pytest -q
+node --check beam_profiler/static/app.js
+```
+
+Tests cover known Gaussian centroids and widths, rotation, ROI coordinates, calibration, saturation, dark subtraction, empty/noisy frames, invalid settings, freeze/resume, exact snapshot metadata, exports, dark invalidation and local HTTP access checks. Simulator tests do not require hardware.
+
+Hardware validation on this Mac: discovery and opening by device ID; actual model and control bounds; 1440 × 1080 Mono16 frames; live browser acquisition. UI frame rate is a processing/preview rate, not a guarantee of the camera's maximum frame rate.
+
+## Cite
+
+If you use this software, please cite the version and Git commit used for your measurements. Citation metadata is in [`CITATION.cff`](CITATION.cff) (GitHub shows a “Cite this repository” button) and [`codemeta.json`](codemeta.json).
+
+## License
+
+MIT, see [`LICENSE`](LICENSE). Third-party runtime components keep their own licenses; see [`THIRD_PARTY.md`](THIRD_PARTY.md).

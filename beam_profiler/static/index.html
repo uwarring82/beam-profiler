@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beam Lab · Beam profiler</title><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Beam Lab home"><span class="brandmark">✳</span> BEAM<span>LAB</span><small>BEAM PROFILER</small></a>
+    <div class="top-actions"><span class="local-tag"><i></i> LOCAL WORKSPACE</span><button id="help" class="icon-button" aria-label="Measurement help">?</button></div>
+  </header>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="section-heading"><span>01 / ACQUISITION</span><button id="scan" class="text-button">↻ Rescan</button></div>
+      <label for="camera-select">Camera source</label>
+      <select id="camera-select"><option>Discovering cameras…</option></select>
+      <div class="device-card"><div class="device-icon">▣</div><div><strong id="device-name">USB camera</strong><small id="device-serial">Select a source to begin</small></div></div>
+      <button id="connect" class="primary full">Connect camera <span>↗</span></button>
+      <button id="models" class="text-button model-link">View supported cameras <span>→</span></button>
+      <div class="divider"></div>
+      <form id="camera-form">
+        <div class="section-heading"><span>CAMERA SETTINGS</span><span class="mini-tag" id="format">—</span></div>
+        <label for="exposure">Exposure <span>µs</span></label>
+        <input id="exposure" type="number" step="any" value="10000" disabled required>
+        <div class="range-hint" id="exposure-range">Range reported by camera</div>
+        <label for="gain">Analog gain <span>dB</span></label>
+        <input id="gain" type="number" step="any" value="0" disabled required>
+        <button id="apply-camera" class="secondary full" disabled>Apply camera settings</button>
+      </form>
+      <div class="divider"></div>
+      <form id="analysis-form">
+        <div class="section-heading"><span>02 / ANALYSIS</span></div>
+        <div class="field-pair"><div><label for="pitch">Pixel pitch <span>µm</span></label><input id="pitch" type="number" min="0.001" max="1000" step="any" placeholder="Unknown"></div><div><label for="magnification">Magnification</label><input id="magnification" type="number" min="0.001" max="10000" step="any" value="1" required></div></div>
+        <p class="field-note" id="calibration-note">Leave pitch blank to measure in pixels.</p>
+        <label class="check-row"><input id="border" type="checkbox" checked> Subtract border background</label>
+        <label for="noise">Noise threshold <span>σ</span></label>
+        <select id="noise"><option value="0">Off · all positive signal</option><option value="2">2 σ · include weak tails</option><option value="3" selected>3 σ · balanced</option><option value="4">4 σ · suppress noise</option><option value="5">5 σ · strong signals</option></select>
+        <button class="secondary full">Apply analysis settings</button>
+      </form>
+      <div class="dark-controls"><div class="section-heading"><span>DARK REFERENCE</span><span id="dark-state">NONE</span></div><p class="field-note">Block the beam, then average 8 dark frames.</p><div class="button-pair"><button id="dark" class="secondary" disabled>Capture dark</button><button id="clear-dark" class="text-button" disabled>Clear</button></div></div>
+      <div class="sidebar-foot"><span class="tiny-dot"></span> Processed on this computer</div>
+    </aside>
+    <main>
+      <div class="page-title"><div><div class="eyebrow">WORKSPACE / LIVE ANALYSIS</div><h1>Beam profile</h1><p id="camera-description">Connect your camera to start measuring.</p></div><div class="title-actions"><button id="pause" class="secondary" disabled>Ⅱ Freeze</button><button id="export" class="primary" disabled>↓ Export snapshot</button></div></div>
+      <div id="message" class="message" role="status" hidden></div>
+      <section class="metric-grid" aria-label="Beam measurements">
+        <article class="metric"><div><span class="axis x">X</span> D4σ diameter <small id="unit-x">µm</small></div><strong id="diameter-x">—</strong><p class="metric-uncertainty" id="u-diameter-x">Uncertainty pending</p><p>Horizontal second moment</p></article>
+        <article class="metric"><div><span class="axis y">Y</span> D4σ diameter <small id="unit-y">µm</small></div><strong id="diameter-y">—</strong><p class="metric-uncertainty" id="u-diameter-y">Uncertainty pending</p><p>Vertical second moment</p></article>
+        <article class="metric"><div>Centroid <small>px</small></div><strong id="centroid" class="centroid-value">— <em>/</em> —</strong><p class="metric-uncertainty" id="u-centroid">Uncertainty pending</p><p>Sensor coordinates · x / y</p></article>
+        <article class="metric"><div>Ellipticity <small>minor / major</small></div><strong id="ellipticity">—</strong><p class="metric-uncertainty" id="u-ellipticity">Uncertainty pending</p><p id="angle">Principal-axis orientation —</p></article>
+      </section>
+      <div class="workspace-grid">
+        <section class="image-panel panel">
+          <div class="panel-heading"><div class="panel-label"><span id="live-dot" class="status-dot"></span><strong>Beam intensity</strong><span id="live-state" class="mini-tag">OFFLINE</span></div><span id="resolution" class="muted">No frame</span></div>
+          <div class="view-toolbar"><div><button id="roi-tool" class="tool" disabled>⌖ Select ROI</button><button id="full-roi" class="tool" disabled>Full sensor</button><label class="check-row"><input id="overlay" type="checkbox" checked> Crosshair</label></div><select id="palette" aria-label="Color map"><option value="thermal">Thermal</option><option value="gray">Grayscale</option></select></div>
+          <div class="image-stage" id="stage"><canvas id="beam-canvas" aria-label="Live camera image and analysis region"></canvas><div id="empty-state"><span class="empty-target">⊕</span><h2>Ready when you are</h2><p>Connect a camera to see the beam.<br>Or choose the simulator to explore the workspace.</p></div><span id="demo-badge" hidden>SIMULATED DATA</span><span id="frozen-badge" hidden>FROZEN FRAME</span></div>
+          <div class="image-footer"><span id="roi-label">Analysis region: full sensor</span><div class="color-scale"><span>0</span><i></i><span id="scale-max">Full scale</span></div></div>
+        </section>
+        <section class="profiles panel">
+          <div class="panel-heading"><strong>Integrated profiles</strong><span class="mini-tag">NORMALIZED</span></div>
+          <div class="profile-block"><div><span class="axis x">X</span><strong>Horizontal</strong><span id="x-span">— px</span></div><canvas id="profile-x" aria-label="Horizontal integrated intensity profile"></canvas></div>
+          <div class="profile-block"><div><span class="axis y">Y</span><strong>Vertical</strong><span id="y-span">— px</span></div><canvas id="profile-y" aria-label="Vertical integrated intensity profile"></canvas></div>
+          <div class="signal-summary"><div><span>Peak intensity</span><strong id="peak">—</strong></div><div class="signal-track"><i id="peak-bar"></i></div><div><span>Saturated pixels</span><strong id="saturation">—</strong></div><div><span>Background</span><strong id="background">—</strong></div></div>
+        </section>
+      </div>
+      <section class="quality panel"><div class="quality-icon">◎</div><div><strong id="quality-title">Waiting for a frame</strong><p id="quality-detail">Measurements use native camera pixels. The preview is scaled for display.</p></div><button id="method-help" class="text-button">Measurement notes ↗</button></section>
+      <section class="uncertainty-panel panel" aria-label="Measurement uncertainty">
+        <div class="panel-heading"><strong>Measurement uncertainty <span class="muted">· single frame · k = 1</span></strong><div><span id="uncertainty-count" class="mini-tag">0 / 60 FRAMES</span><button id="reset-statistics" class="text-button">↻ Reset window</button></div></div>
+        <div class="uncertainty-intro"><strong id="uncertainty-status">Collecting repeatability data</strong><p id="uncertainty-detail">At least 20 consecutive valid frames are needed. Camera and analysis changes start a new window.</p><p id="uncertainty-budget" class="budget-note">Partial budget · calibration uncertainties not specified.</p></div>
+        <details id="uncertainty-details"><summary>Uncertainty budget &amp; calibration inputs</summary>
+          <div class="uncertainty-table-scroll"><table class="uncertainty-table"><thead><tr><th>Quantity</th><th>Window mean</th><th>Frame spread s</th><th>Known scale u</th><th>Known subtotal u</th></tr></thead><tbody id="uncertainty-rows"></tbody></table></div>
+          <p class="uncertainty-explanation">Cards show the current frame ± the known standard uncertainty (k = 1). The frame spread includes beam motion. Window means are descriptive: no s/√N or confidence interval is assigned. Fixed dark-reference error, threshold/ROI bias and other systematics remain unquantified.</p>
+          <form id="uncertainty-form">
+            <div><label for="u-window">Window <span>frames</span></label><input id="u-window" type="number" min="20" max="600" step="1" value="60" required></div>
+            <div><label for="u-pitch">Pixel pitch u <span>µm · k = 1</span></label><input id="u-pitch" type="number" min="0" step="any" placeholder="Not specified"></div>
+            <div><label for="u-mag">Magnification u <span>absolute · k = 1</span></label><input id="u-mag" type="number" min="0" step="any" placeholder="Not specified"></div>
+            <div><label for="u-correlation">Pitch–magnification ρ</label><input id="u-correlation" type="number" min="-1" max="1" step="any" value="0" required></div>
+            <button class="secondary">Apply uncertainty settings</button>
+          </form>
+          <p class="uncertainty-explanation">Blank means unknown; enter 0 only for a deliberately exact input. Default ρ = 0 assumes independent scale calibrations. Enter standard uncertainties, not tolerance bounds. First-order propagation requires each calibration uncertainty ≤10% of its nominal value.</p>
+        </details>
+      </section>
+      <footer class="statusbar"><div><span id="connection-label">● Disconnected</span><span id="fps">— fps</span><span id="frames">0 frames</span></div><span id="timestamp">No acquisition yet</span></footer>
+    </main>
+  </div>
+  <dialog id="info-dialog"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="close-dialog" class="icon-button" aria-label="Close dialog">×</button></div><div id="dialog-content"></div></dialog>
+  <script src="/app.js" defer></script>
+</body>
+</html>

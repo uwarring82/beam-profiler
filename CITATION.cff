@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, cite the version and Git commit used for your measurements."
+title: "Beam Lab: local beam profiler"
+type: software
+authors:
+  - family-names: Warring
+    given-names: Ulrich
+    affiliation: University of Freiburg
+version: 0.1.0
+date-released: 2026-09-23
+license: MIT
+repository-code: "https://github.com/uwarring82/beam-profiler"
+url: "https://github.com/uwarring82/beam-profiler"
+abstract: "Local laser beam profiler with a browser UI and Python acquisition from GenICam cameras via Aravis. Computes intensity-weighted centroids, D4σ diameters and principal axes on native pixels, with a rolling single-frame repeatability estimate and an explicit partial uncertainty budget. Exports raw TIFF, profiles and full measurement metadata."
+keywords:
+  - beam profiling
+  - laser optics
+  - D4sigma
+  - measurement uncertainty
+  - GenICam
+  - scientific imaging
