@@ -14,10 +14,13 @@ import zipfile
 import numpy as np
 from PIL import Image
 
+from . import __version__
 from .analysis import analyze
 from .report import details_text, inspection_png, measurement, preview_levels
 from .cameras.aravis import Aravis, AravisCamera, CameraError
 from .cameras.demo import DemoCamera
+from .cameras.replay import ReplayCamera
+from .session import Recorder, SessionLog, list_recordings
 from .uncertainty import DEFAULTS as UNCERTAINTY_DEFAULTS, FIELDS, MIN_SAMPLES, UncertaintyWindow
 
 
@@ -36,8 +39,13 @@ class Snapshot:
 
 class Profiler:
     """One acquisition thread owns every native call; HTTP only reads snapshots."""
-    def __init__(self):
+    def __init__(self, sessions_dir=None):
         self.api = None
+        self.sessions_dir = sessions_dir
+        self.log = SessionLog(sessions_dir)
+        self.recorder = None
+        self.recordings = {}
+        self._quality = None
         self.camera = None
         self.snapshot = None
         self.dark = None
@@ -50,7 +58,11 @@ class Profiler:
         self.uncertainty = UncertaintyWindow({**self.uncertainty_settings, **self.settings})
         self.state = {"connected": False, "paused": False, "camera": None, "error": None,
                       "frame_count": 0, "fps": 0., "dark_active": False, "devices": [],
-                      "driver_error": None}
+                      "driver_error": None, "recording": None,
+                      "session": self.log.directory.name if self.log.directory else None,
+                      "log_error": self.log.error}
+        self.log.add("session_start", f"Beam profiler {__version__} session started.",
+                     session_folder=str(self.log.directory) if self.log.directory else None)
         self.thread = threading.Thread(target=self._run, name="camera-acquisition", daemon=True)
         self.thread.start()
 
@@ -61,7 +73,7 @@ class Profiler:
 
     def status(self):
         with self.lock:
-            return {**self.state, "settings": dict(self.settings),
+            return {**self.state, "log_seq": self.log.seq, "settings": dict(self.settings),
                     "uncertainty_settings": dict(self.uncertainty_settings)}
 
     def packet(self):
@@ -83,8 +95,28 @@ class Profiler:
     def _reset_statistics(self, reason="Measurement conditions changed."):
         self.uncertainty.reset(reason, {**self.uncertainty_settings, **self.settings})
 
+    def _replaying(self):
+        return bool(self.camera and self.camera.info.get("driver") == "replay")
+
+    def _stop_recording(self, reason):
+        if self.recorder:
+            try:
+                result = self.recorder.stop(reason)
+                self.log.add("recording_stop", f"Recording {result['name']} stopped after {result['frames']} frames: {reason}.",
+                             **result, reason=reason)
+            finally:
+                self.recorder = None
+                self._update(recording=None)
+                self.recordings = list_recordings(self.sessions_dir)
+                with self.lock:
+                    self.state["devices"] = [d for d in self.state["devices"] if d.get("driver") != "replay"] + \
+                        [r["device"] for r in self.recordings.values()]
+
     def _disconnect(self):
+        if self.camera:
+            self.log.add("disconnect", f"Disconnected {self.camera.info.get('model', 'camera')}.")
         try:
+            self._stop_recording("camera disconnected")
             if self.camera:
                 self.camera.close()
         finally:
@@ -107,14 +139,22 @@ class Profiler:
             devices.append({"id": "demo", "model": "Gaussian beam simulator", "vendor": "Demo",
                             "serial": "SIMULATED", "transport": "Synthetic", "driver": "demo",
                             "available": True})
+            self.recordings = list_recordings(self.sessions_dir)
+            devices += [r["device"] for r in self.recordings.values()]
             self._update(devices=devices)
+            self.log.add("scan", f"Found {len(devices)} sources ({len(self.recordings)} recordings).",
+                         devices=[d["id"] for d in devices], driver_error=self.state["driver_error"])
         elif action == "connect":
             device_id = data.get("id")
             if not isinstance(device_id, str) or not device_id:
                 raise ValueError("Choose a camera first.")
+            if device_id.startswith("replay:") and device_id not in self.recordings:
+                raise ValueError("Unknown recording; rescan sources.")
             self._disconnect()
             if device_id == "demo":
                 camera = DemoCamera()
+            elif device_id.startswith("replay:"):
+                camera = ReplayCamera(self.recordings[device_id]["path"])
             else:
                 if self.api is None:
                     self.api = Aravis()
@@ -132,6 +172,15 @@ class Profiler:
                 self.uncertainty_settings["pixel_pitch_u_um"] = None
             self._reset_statistics("Camera connected; collecting a new window.")
             self._update(connected=True, paused=False, camera=info, error=None, frame_count=0)
+            self._quality = None
+            self.log.add("connect", f"Connected {info.get('vendor', '')} {info.get('model', '')} · {info.get('serial', '')}"
+                         + (" (replay)" if device_id.startswith("replay:") else "") + ".", camera=info)
+            if device_id.startswith("replay:"):
+                # Start from the recorded analysis settings; they remain editable.
+                try:
+                    self._execute("analysis", {k: v for k, v in camera.settings.items() if k in self.settings})
+                except (ValueError, TypeError) as error:
+                    self.log.add("warning", f"Recorded analysis settings not applied: {error}")
         elif action == "disconnect":
             self._disconnect()
         elif action == "pause":
@@ -140,6 +189,9 @@ class Profiler:
                 raise ValueError("paused must be true or false.")
             if self.state["paused"] and not data["paused"]:
                 self._reset_statistics("Acquisition resumed; collecting a new window.")
+            if self.state["paused"] != data["paused"]:
+                self.log.add("pause" if data["paused"] else "resume", "Frame frozen." if data["paused"] else "Acquisition resumed.",
+                             frame=self.snapshot.packet["timestamp"] if self.snapshot and data["paused"] else None)
             self._update(paused=data["paused"])
         elif action == "configure":
             self._require_camera()
@@ -156,6 +208,10 @@ class Profiler:
                 if not rejected:
                     self._invalidate()
                     self._update(camera=dict(self.camera.info), paused=False)
+                    self.log.add("configure", f"Camera set to {self.camera.info['exposure_us']:.6g} µs exposure, "
+                                 f"{self.camera.info['gain_db']:.4g} dB gain (requested {exposure_us:g} µs, {gain_db:g} dB); "
+                                 "dark reference cleared.", requested={"exposure_us": exposure_us, "gain_db": gain_db},
+                                 actual={"exposure_us": self.camera.info["exposure_us"], "gain_db": self.camera.info["gain_db"]})
         elif action == "analysis":
             new = dict(self.settings)
             if "pixel_pitch_um" in data:
@@ -189,6 +245,10 @@ class Profiler:
                 if new["magnification"] != previous["magnification"]:
                     self.uncertainty_settings["magnification_u"] = None
             self._reset_statistics("Analysis/calibration settings changed.")
+            changed = {k: v for k, v in new.items() if previous[k] != v}
+            if changed:
+                self.log.add("analysis", "Analysis settings changed: " +
+                             ", ".join(f"{k} = {v}" for k, v in changed.items()) + ".", changed=changed, settings=new)
             if old:
                 self._publish(old.pixels, old.metrics["maximum_dn"], old.packet["timestamp"], count=False)
         elif action == "uncertainty":
@@ -214,23 +274,48 @@ class Profiler:
                 if new[key] is not None and new[key] > .1 * nominal:
                     raise ValueError("This linear calibration model requires standard uncertainty ≤10% of the nominal value.")
             with self.lock:
-                self.uncertainty_settings = new
+                previous, self.uncertainty_settings = self.uncertainty_settings, new
             self._reset_statistics("Uncertainty settings changed.")
+            changed = {k: v for k, v in new.items() if previous.get(k) != v}
+            if changed:
+                self.log.add("uncertainty", "Uncertainty settings changed: " +
+                             ", ".join(f"{k} = {v}" for k, v in changed.items()) + ".", changed=changed, settings=new)
             if self.snapshot:
                 old = self.snapshot
                 self._publish(old.pixels, old.metrics["maximum_dn"], old.packet["timestamp"], count=False)
         elif action == "reset_statistics":
             self._reset_statistics("Statistics reset by user.")
+            self.log.add("reset_statistics", "Uncertainty window reset by user.")
             if self.snapshot:
                 old = self.snapshot
                 self._publish(old.pixels, old.metrics["maximum_dn"], old.packet["timestamp"], count=False)
         elif action == "restore_snapshot":
             # Internal startup operation only; not exposed by the HTTP API.
             self._restore_snapshot(data["archive"])
+            self.log.add("restore_snapshot", f"Restored snapshot frame {self.snapshot.packet['timestamp']}; frozen.",
+                         source=data.get("source"))
+        elif action == "record":
+            self._require_camera()
+            if not isinstance(data.get("recording"), bool):
+                raise ValueError("recording must be true or false.")
+            if data["recording"] and not self.recorder:
+                if self._replaying():
+                    raise ValueError("Recording is unavailable during replay.")
+                if self.log.directory is None:
+                    raise ValueError("No session folder is available for recordings.")
+                self.recorder = Recorder(self.log.directory, self.camera.info, self.settings, self.uncertainty_settings)
+                self._update(recording=self.recorder.status())
+                self.log.add("recording_start", f"Recording raw frames to {self.recorder.status()['name']}.",
+                             **self.recorder.status())
+            elif not data["recording"]:
+                self._stop_recording("stopped by user")
         elif action == "dark":
             self._require_camera()
+            if self._replaying() and not data.get("clear"):
+                raise ValueError("A replay uses its recorded dark references.")
             if data.get("clear"):
                 self.dark = None
+                self.log.add("dark_clear", "Dark reference cleared.")
             else:
                 if self.camera.info["exposure_us"] > 1_000_000:
                     raise ValueError("Use an exposure of 1 second or less when capturing a dark reference.")
@@ -239,6 +324,8 @@ class Profiler:
                     self.camera.read()
                 frames = [self.camera.read().pixels.astype(np.float64) for _ in range(8)]
                 self.dark = np.mean(frames, axis=0)
+                self.log.add("dark_capture", f"Dark reference captured: mean of 8 frames, mean level {float(self.dark.mean()):.4g} DN.",
+                             exposure_us=self.camera.info["exposure_us"], gain_db=self.camera.info["gain_db"])
             self._invalidate(dark=False)
             self._update(dark_active=self.dark is not None, paused=False)
         else:
@@ -316,13 +403,25 @@ class Profiler:
                   "image": base64.b64encode(out.getvalue()).decode(), "metrics": metrics,
                   "profile_x": profile(px, metrics["roi"][0]), "profile_y": profile(py, metrics["roi"][1]),
                   "uncertainty": uncertainty,
-                  "simulated": self.camera.info["simulated"]}
+                  "simulated": self.camera.info["simulated"], "replay": self.camera.info.get("replay")}
         snapshot = Snapshot(pixels, metrics, px, py, packet, dict(self.camera.info), settings, self.dark,
                             self.uncertainty.rows())
         with self.lock:
             self.snapshot = snapshot
             self.state["frame_count"] = frame_id
             self.state["error"] = None
+        if count:
+            self._log_quality(metrics)
+        return timestamp
+
+    def _log_quality(self, metrics):
+        # Log changes of image-quality state, at most every 2 s so flapping cannot flood the log.
+        state = tuple(metrics["warnings"]) if metrics["valid"] else ("No clear beam signal.",)
+        now = time.monotonic()
+        if self._quality is None or (state != self._quality[0] and now - self._quality[1] >= 2):
+            self._quality = (state, now)
+            self.log.add("quality", "Image quality: " + (" ".join(state) if state else "valid beam, no warnings."),
+                         valid=metrics["valid"], warnings=list(metrics["warnings"]))
 
     def _run(self):
         last_frame = time.monotonic()
@@ -339,14 +438,28 @@ class Profiler:
                         failures = 0
                         future.set_result(result)
                     except Exception as error:
+                        self.log.add("error", f"{action} failed: {error}", action=action)
                         future.set_exception(error)
                 if not self.camera:
                     continue
                 try:
                     frame = self.camera.read()
                     failures = 0
+                    if self._replaying():
+                        if frame.restart:
+                            self._reset_statistics("Replay restarted from the first recorded frame.")
+                            self.log.add("replay_start", f"Replay started at recorded frame 1 of {len(self.camera.rows)}.")
+                        if frame.dark is not self.dark:
+                            self.dark = frame.dark
+                            self._update(dark_active=frame.dark is not None)
                     if not self.state["paused"]:
-                        self._publish(frame.pixels, frame.maximum)
+                        timestamp = self._publish(frame.pixels, frame.maximum, frame.timestamp)
+                        if self.recorder:
+                            reason = self.recorder.add(frame.pixels, frame.maximum, timestamp, self.camera.info, self.dark)
+                            if reason:
+                                self._stop_recording(reason)
+                            else:
+                                self._update(recording=self.recorder.status())
                         now = time.monotonic()
                         instant = 1 / max(now - last_frame, .001)
                         self._update(fps=round(.8 * self.state["fps"] + .2 * instant, 1))
@@ -355,7 +468,9 @@ class Profiler:
                     failures += 1
                     self._reset_statistics("Frame acquisition failed; collecting a new window.")
                     self._update(error=str(error))
+                    self.log.add("acquisition_error", f"Frame acquisition failed ({failures}/3): {error}")
                     if failures >= 3:
+                        self.log.add("error", "Three consecutive acquisition failures; disconnecting.")
                         self._disconnect()
                     self.stop_event.wait(.15)
         finally:
@@ -370,7 +485,10 @@ class Profiler:
 
     def inspection(self, palette="thermal"):
         """Inspection PNG of the same frame and statistics an export would contain."""
-        return inspection_png(self._exported_snapshot(), palette)
+        snap = self._exported_snapshot()
+        png = inspection_png(snap, palette)
+        self.log.add("save_png", f"Inspection PNG saved for frame {snap.packet['timestamp']}.", palette=palette)
+        return png
 
     def export(self, palette="thermal"):
         snap = self._exported_snapshot()
@@ -382,6 +500,8 @@ class Profiler:
             archive.writestr("measurement.json", json.dumps(measurement(snap), indent=2))
             archive.writestr("details.txt", details_text(snap, palette))
             archive.writestr("inspection.png", inspection_png(snap, palette))
+            self.log.add("export", f"Raw data exported for frame {snap.packet['timestamp']}.", palette=palette)
+            archive.writestr("session-log.jsonl", self.log.jsonl())
             samples = StringIO(newline="")
             writer = csv.DictWriter(samples, fieldnames=["timestamp", *FIELDS])
             writer.writeheader()

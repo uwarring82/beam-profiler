@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 let state = null, packet = null, busy = false, roiMode = false, drag = null, image = null;
-let frameKey = '', drawBounds = null, pollFailures = 0;
+let frameKey = '', drawBounds = null, pollFailures = 0, logSeq = 0, logBusy = false;
 const offscreen = document.createElement('canvas');
 const ctx = $('beam-canvas').getContext('2d');
 const fmt = (value, digits = 1) => value == null ? '—' : Number(value).toLocaleString(undefined, {minimumFractionDigits: digits, maximumFractionDigits: digits});
@@ -74,7 +74,7 @@ function syncFields() {
 function updateDeviceCard() {
   const d = state?.camera || state?.devices.find(d => d.id === $('camera-select').value);
   $('device-name').textContent = d?.model || 'No camera selected';
-  $('device-serial').textContent = d ? `${d.serial} · ${d.transport || (d.simulated ? 'Synthetic' : 'USB3 Vision')}` : 'Rescan to discover cameras';
+  $('device-serial').textContent = d ? `${d.serial} · ${d.transport || (d.driver === 'replay' ? 'Recorded session' : d.simulated ? 'Synthetic' : 'USB3 Vision')}` : 'Rescan to discover cameras';
 }
 
 function renderState() {
@@ -83,7 +83,16 @@ function renderState() {
   $('connect').disabled = busy || !state?.devices.length;
   $('camera-select').disabled = connected || busy;
   $('scan').disabled = connected || busy;
+  const replay = state?.camera?.driver === 'replay';
   for (const id of ['pause', 'apply-camera', 'exposure', 'gain', 'dark', 'roi-tool', 'full-roi']) $(id).disabled = !connected || busy;
+  // A replay keeps its recorded exposure, gain and dark references.
+  for (const id of ['apply-camera', 'exposure', 'gain', 'dark']) if (replay) $(id).disabled = true;
+  const recording = state?.recording;
+  $('record').disabled = !connected || busy || replay || !state?.session;
+  $('record').classList.toggle('recording', !!recording);
+  $('record').textContent = recording ? '■ Stop recording' : '● Record raw frames';
+  $('record-note').textContent = replay ? 'Replaying recorded frames with their original timestamps.' : !state?.session ? 'No session folder: recording unavailable.' : recording ? `Recording ${recording.name}: ${recording.frames} frames (limit ${recording.max_frames}).` : 'Saves each analyzed live frame as native TIFF for later replay.';
+  $('rec-state').hidden = !recording; if (recording) $('rec-state').textContent = `● REC ${recording.frames}`;
   $('clear-dark').disabled = !state?.dark_active || busy;
   $('reset-statistics').disabled = !connected || busy;
   $('uncertainty-form').querySelector('button').disabled = busy;
@@ -91,14 +100,15 @@ function renderState() {
   $('pause').textContent = paused ? '▶ Resume' : 'Ⅱ Freeze';
   $('dark-state').textContent = state?.dark_active ? 'ACTIVE · 8 FRAMES' : 'NONE';
   $('format').textContent = state?.camera?.pixel_format || '—';
-  $('live-state').textContent = !connected ? 'OFFLINE' : paused ? 'FROZEN' : state.camera.simulated ? 'DEMO' : 'LIVE';
+  $('live-state').textContent = !connected ? 'OFFLINE' : paused ? 'FROZEN' : replay ? 'REPLAY' : state.camera.simulated ? 'DEMO' : 'LIVE';
   $('live-dot').classList.toggle('live', connected && !paused);
   $('frozen-badge').hidden = !paused || !packet;
-  $('demo-badge').hidden = !packet?.simulated;
-  $('connection-label').textContent = !connected ? '● Disconnected' : state.camera.simulated ? '● Simulator' : '● Camera connected';
+  $('demo-badge').hidden = !packet?.simulated && !packet?.replay;
+  $('demo-badge').textContent = packet?.replay ? (packet.simulated ? 'REPLAY · SIMULATED DATA' : 'REPLAY · RECORDED DATA') : 'SIMULATED DATA';
+  $('connection-label').textContent = !connected ? '● Disconnected' : replay ? '● Replay' : state.camera.simulated ? '● Simulator' : '● Camera connected';
   $('fps').textContent = `${paused ? 'Frozen' : fmt(state?.fps || 0) + ' fps'}`;
   $('frames').textContent = `${(state?.frame_count || 0).toLocaleString()} frames`;
-  $('camera-description').textContent = connected ? `${state.camera.model} · S/N ${state.camera.serial}` : 'Connect your camera to start measuring.';
+  $('camera-description').textContent = !connected ? 'Connect your camera to start measuring.' : replay ? `Replay of ${state.camera.replay.session}/${state.camera.replay.recording} · ${state.camera.model} · S/N ${state.camera.serial}` : `${state.camera.model} · S/N ${state.camera.serial}`;
   $('calibration-note').textContent = state?.settings.pixel_pitch_um ?
     `Scale: ${fmt(state.settings.pixel_pitch_um / state.settings.magnification, 3)} µm / px ${state.settings.magnification === 1 ? 'at the sensor.' : 'in the object plane.'}` : 'Leave pitch blank to measure in pixels.';
 }
@@ -138,7 +148,7 @@ async function acceptFrame(next) {
   $('roi-label').textContent = state?.settings.roi ? `ROI: ${x1-x0} × ${y1-y0} px · (${x0}, ${y0})` : 'Analysis region: full sensor';
   $('x-span').textContent = `${x0} – ${x1 - 1} px`; $('y-span').textContent = `${y0} – ${y1 - 1} px`;
   $('scale-max').textContent = `${m.maximum_dn.toLocaleString()} DN`;
-  $('timestamp').textContent = new Date(packet.timestamp).toLocaleTimeString() + ' · ' + (packet.simulated ? 'Simulated frame' : 'Camera frame');
+  $('timestamp').textContent = new Date(packet.timestamp).toLocaleTimeString() + ' · ' + (packet.replay ? `Recorded frame ${packet.replay.frame} of ${packet.replay.frames}` : packet.simulated ? 'Simulated frame' : 'Camera frame');
   const warnings = m.warnings;
   document.querySelector('.quality').classList.toggle('warn', warnings.length > 0);
   $('quality-title').textContent = !m.valid ? 'No clear beam detected' : warnings.length ? 'Check measurement conditions' : 'Intensity signal detected';
@@ -285,6 +295,7 @@ $('camera-form').onsubmit=e=>{e.preventDefault();action('configure',{exposure_us
 $('analysis-form').onsubmit=e=>{e.preventDefault();action('analysis',{pixel_pitch_um:$('pitch').value?Number($('pitch').value):null,magnification:Number($('magnification').value),subtract_border:$('border').checked,noise_sigma:Number($('noise').value)});};
 $('uncertainty-form').onsubmit=e=>{e.preventDefault();action('uncertainty',{window_frames:Number($('u-window').value),pixel_pitch_u_um:$('u-pitch').value===''?null:Number($('u-pitch').value),magnification_u:$('u-mag').value===''?null:Number($('u-mag').value),scale_correlation:Number($('u-correlation').value)});};
 $('reset-statistics').onclick=()=>action('reset_statistics');
+$('record').onclick=()=>action('record',{recording:!state?.recording});
 $('dark').onclick=()=>action('dark');$('clear-dark').onclick=()=>action('dark',{clear:true});
 $('palette').onchange=draw;$('overlay').onchange=draw;
 // Both downloads use the server's current snapshot: freeze first to keep a particular frame.
@@ -293,12 +304,26 @@ $('export').onclick=()=>download('export','beam-snapshot','zip');
 $('save-png').onclick=()=>download('png','beam-inspection','png');
 
 function dialog(title,html){$('dialog-title').textContent=title;$('dialog-content').innerHTML=html;$('info-dialog').showModal();}
-const measurementNotes=`<p><strong>D4σ diameter</strong> is four times the intensity-weighted standard deviation. For an ideal Gaussian it equals the 1/e² diameter. The ellipse shows principal-axis D4σ diameters; X and Y cards show sensor-axis widths.</p><p><strong>Background and noise.</strong> The median of the ROI border is subtracted when enabled. Signal below the selected multiple of border noise is excluded; noise uses a robust deviation estimate that also handles black-clipped pixels. A dark reference averages 8 blocked-beam frames and is cleared when camera settings change. Thresholds can exclude weak beam tails and change second moments.</p><p><strong>Calibration.</strong> Physical scale = pixel pitch ÷ optical magnification. At 1× the result is in the sensor plane. Unknown cameras use pixels until a pitch is entered. Centroids use the delivered image’s pixel coordinates.</p><p><strong>Profiles</strong> sum corrected intensity along each axis and are independently normalized for display. The preview uses a fixed full-scale intensity mapping.</p><p><strong>Export raw data</strong> saves a ZIP with the native-bit-depth TIFF, measurement metadata, full-resolution X/Y profile CSVs, a plain-text details file and the inspection PNG. <strong>Save PNG</strong> saves only the inspection sheet: image with overlays, profiles and all settings and results as plain text, also embedded as PNG text metadata. Measure from the raw TIFF, not the PNG. Freeze before saving to retain a particular frame. These are practical beam estimates, not certified ISO 11146 results.</p>`;
+const measurementNotes=`<p><strong>D4σ diameter</strong> is four times the intensity-weighted standard deviation. For an ideal Gaussian it equals the 1/e² diameter. The ellipse shows principal-axis D4σ diameters; X and Y cards show sensor-axis widths.</p><p><strong>Background and noise.</strong> The median of the ROI border is subtracted when enabled. Signal below the selected multiple of border noise is excluded; noise uses a robust deviation estimate that also handles black-clipped pixels. A dark reference averages 8 blocked-beam frames and is cleared when camera settings change. Thresholds can exclude weak beam tails and change second moments.</p><p><strong>Calibration.</strong> Physical scale = pixel pitch ÷ optical magnification. At 1× the result is in the sensor plane. Unknown cameras use pixels until a pitch is entered. Centroids use the delivered image’s pixel coordinates.</p><p><strong>Profiles</strong> sum corrected intensity along each axis and are independently normalized for display. The preview uses a fixed full-scale intensity mapping.</p><p><strong>Session log and replay.</strong> Every server run writes a timestamped event log (connections, settings, dark references, recordings, exports, errors and image-quality changes) to <code>sessions/session-…/log.jsonl</code>. <strong>Record raw frames</strong> saves each analyzed live frame as native TIFF with a SHA-256 manifest. Recordings appear in the camera list after recording or rescanning; replay loops them with their original timestamps, exposure, gain and dark references through the same analysis.</p><p><strong>Export raw data</strong> saves a ZIP with the native-bit-depth TIFF, measurement metadata, full-resolution X/Y profile CSVs, a plain-text details file and the inspection PNG. <strong>Save PNG</strong> saves only the inspection sheet: image with overlays, profiles and all settings and results as plain text, also embedded as PNG text metadata. Measure from the raw TIFF, not the PNG. Freeze before saving to retain a particular frame. These are practical beam estimates, not certified ISO 11146 results.</p>`;
 $('help').onclick=$('method-help').onclick=()=>dialog('About the measurements',measurementNotes+`<p><strong>Uncertainty.</strong> Live values are single-frame measurements. The rolling sample standard deviation s (N−1 denominator) estimates their temporal spread, including beam motion. It is not divided by √N. Known calibration contributions are combined in quadrature, including a common scale covariance with input correlation ρ. Unknown contributions are visibly omitted from a partial budget. Near-circular axis angles and unresolved variation receive no error bar. Export includes the exact window samples and covariance matrices.</p><p>Standard uncertainties use k = 1; no coverage probability or confidence interval is implied. The <a href="https://physics.nist.gov/cuu/Uncertainty/combination.html" target="_blank" rel="noopener">NIST uncertainty guidance</a> describes covariance propagation and its assumptions.</p>`);
 $('models').onclick=()=>dialog('Camera support',`<p>Camera acquisition is separate from beam analysis, so additional drivers and model calibrations can be added independently.</p><div class="model-row"><strong>FLIR Firefly FFY-U3-16S2M-DL</strong><span>Verified on this computer · USB3 Vision</span><p>1440 × 1080 monochrome · 3.45 µm pixel pitch · exposure and gain control · Mono16 acquisition.</p></div><div class="model-row"><strong>Other GenICam cameras</strong><span>Aravis adapter · device-dependent support</span><p>Discovery supports USB3 Vision and GigE Vision. This version requires Mono8, Mono10, Mono12 or Mono16. Other models need hardware validation and pixel-pitch calibration.</p></div><div class="model-row"><strong>Gaussian beam simulator</strong><span>Included · no hardware needed</span><p>A moving elliptical beam for exploring the UI and testing the analysis.</p></div>`);
 $('close-dialog').onclick=()=>$('info-dialog').close();
 $('info-dialog').addEventListener('click',e=>{if(e.target===$('info-dialog'))$('info-dialog').close();});
 new ResizeObserver(()=>{draw();drawProfile('x',packet?.profile_x);drawProfile('y',packet?.profile_y);}).observe($('stage'));
+
+async function updateLog(){
+  if(logBusy)return; logBusy=true;
+  try{
+    const result=await api('log?after='+logSeq);
+    $('log-folder').textContent=result.folder ? result.folder+'/log.jsonl' : 'In memory · no session folder';
+    const rows=result.entries.map(e=>{const li=document.createElement('li');li.className='log-'+e.event;
+      const time=document.createElement('time');time.dateTime=e.time;time.textContent=new Date(e.time).toLocaleTimeString();
+      li.append(time,document.createTextNode(e.message));return li;});
+    $('log-list').prepend(...rows.reverse());
+    while($('log-list').children.length>200)$('log-list').lastChild.remove();
+    logSeq=result.seq;
+  }catch{}finally{logBusy=false;}
+}
 
 async function poll(){
   if(!busy){
@@ -309,6 +334,7 @@ async function poll(){
       renderState();
       if(pollFailures){message('');pollFailures=0;}
       if(state.error)message(state.error);
+      if(state.log_seq!==logSeq)updateLog();
     }catch(error){pollFailures++;if(pollFailures>2){message('Connection to the local server was lost. Restart python3 -m beam_profiler.server.');$('live-state').textContent='SERVER OFFLINE';$('live-dot').classList.remove('live');}}
   }
   setTimeout(poll,120);

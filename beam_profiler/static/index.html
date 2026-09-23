@@ -16,6 +16,8 @@
       <select id="camera-select"><option>Discovering cameras…</option></select>
       <div class="device-card"><div class="device-icon">▣</div><div><strong id="device-name">USB camera</strong><small id="device-serial">Select a source to begin</small></div></div>
       <button id="connect" class="primary full">Connect camera <span>↗</span></button>
+      <button id="record" class="secondary full record-button" disabled>● Record raw frames</button>
+      <p class="field-note" id="record-note">Saves each analyzed live frame as native TIFF for later replay.</p>
       <button id="models" class="text-button model-link">View supported cameras <span>→</span></button>
       <div class="divider"></div>
       <form id="camera-form">
@@ -80,7 +82,11 @@
           <p class="uncertainty-explanation">Blank means unknown; enter 0 only for a deliberately exact input. Default ρ = 0 assumes independent scale calibrations. Enter standard uncertainties, not tolerance bounds. First-order propagation requires each calibration uncertainty ≤10% of its nominal value.</p>
         </details>
       </section>
-      <footer class="statusbar"><div><span id="connection-label">● Disconnected</span><span id="fps">— fps</span><span id="frames">0 frames</span></div><span id="timestamp">No acquisition yet</span></footer>
+      <section class="log-panel panel" aria-label="Session log">
+        <div class="panel-heading"><strong>Session log</strong><span id="log-folder" class="muted">In memory</span></div>
+        <ol id="log-list" reversed></ol>
+      </section>
+      <footer class="statusbar"><div><span id="connection-label">● Disconnected</span><span id="fps">— fps</span><span id="frames">0 frames</span><span id="rec-state" hidden></span></div><span id="timestamp">No acquisition yet</span></footer>
     </main>
   </div>
   <dialog id="info-dialog"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="close-dialog" class="icon-button" aria-label="Close dialog">×</button></div><div id="dialog-content"></div></dialog>

@@ -47,3 +47,14 @@ def test_non_json_post_rejected():
 
 def test_internal_restore_not_exposed_over_http():
     assert b'404 Not Found' in response(b'POST /api/restore_snapshot HTTP/1.1\r\nHost: localhost:8877\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}')
+
+
+def test_log_endpoint_and_record_action_are_routed():
+    class Log:
+        seq, directory = 3, None
+        def since(self, after): return [{"seq": 3, "event": "scan"}] if after < 3 else []
+    FakeProfiler.log = Log()
+    result = response(b'GET /api/log?after=1 HTTP/1.1\r\nHost: 127.0.0.1:8877\r\n\r\n')
+    assert json.loads(result.split(b'\r\n\r\n')[1]) == {"entries": [{"seq": 3, "event": "scan"}], "seq": 3, "folder": None}
+    assert b'400' in response(b'GET /api/log?after=x HTTP/1.1\r\nHost: 127.0.0.1:8877\r\n\r\n')
+    assert b'200 OK' in response(b'POST /api/record HTTP/1.1\r\nHost: localhost:8877\r\nContent-Type: application/json\r\nContent-Length: 19\r\n\r\n{"recording": true}')

@@ -1,5 +1,7 @@
 # Beam Lab
 
+[Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
+
 [![Tests](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml/badge.svg)](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml)
 
 A local laser beam profiler with a browser UI and Python camera acquisition. Built and hardware-tested on an Apple Silicon Mac with a **FLIR Firefly FFY-U3-16S2M-DL**, serial **20415440**. A built-in Gaussian beam simulator runs without any camera.
@@ -40,6 +42,7 @@ The application uses the open-source Aravis GenICam library rather than a vendor
 - Integrated X/Y profiles, peak intensity, saturation and clipped-region warnings.
 - Border background subtraction, adjustable noise threshold, averaged dark reference.
 - Freeze/resume and ZIP snapshot export containing raw TIFF, measurement JSON, profile CSVs, a plain-text details file and the inspection PNG. An active dark reference is included as float TIFF.
+- Session event log on disk and in the UI; raw-frame recording with SHA-256 manifest; replay of recordings through the same analysis.
 - **Save PNG**: an inspection sheet with the color-mapped frame, ROI, centroid and D4σ ellipse, both profiles, and every acquisition setting, analysis setting, result, uncertainty and warning as plain text.
 
 All capture and analysis run locally. The HTTP server binds only to loopback. The camera is opened only when selected and connected. Freeze retains the analyzed frame while acquisition continues to drain incoming buffers; resume displays fresh data. Disconnect releases USB ownership. Camera settings are adjusted in the current session; no camera user set is saved to flash.
@@ -64,6 +67,21 @@ Open **Uncertainty budget & calibration inputs** to inspect window means, tempor
 
 The export now also contains `uncertainty-samples.csv` and full uncertainty metadata/covariances in `measurement.json`. See [the measurement model and limitations](docs/uncertainty.md) for equations, reset rules, circular-angle handling and references.
 
+## Session log and replay
+
+Each server run creates `sessions/session-<UTC time>/` (change with `--sessions-dir`; the folder is ignored by version control). Its `log.jsonl` has one JSON object per line: `seq`, UTC `time`, `event`, a plain-text `message` and structured `data`. Logged events include start, scans, connections, freeze/resume, requested and actual exposure/gain, analysis and uncertainty setting changes, dark captures, recordings, replays, PNG saves, exports, rejected commands, acquisition errors, and changes in image-quality state (at most every 2 s). The **Session log** panel shows the newest entries; every export ZIP includes the log as `session-log.jsonl`.
+
+**Record raw frames** writes every analyzed live frame (not frames skipped while frozen) to `recording-NNN/` inside the session folder:
+
+| File | Content |
+| --- | --- |
+| `recording.json` | Format version, software version, start/stop time and reason, frame count, camera info, analysis and uncertainty settings at start |
+| `frames.csv` | `index, timestamp, file, sha256, exposure_us, gain_db, pixel_format, maximum_dn, dark_file` per frame |
+| `frames/frame-NNNNNN.tiff` | Native, unscaled monochrome frame |
+| `dark-NNN.tiff` | Each dark reference in use (32-bit float), referenced by `dark_file` |
+
+Recording stops automatically at 5000 frames or below 2 GB free disk space; at full Firefly resolution a frame is about 3 MB. Recordings appear in the camera list as **Replay** sources (after stopping, or on rescan). Replay loops the recorded frames through the normal analysis, uncertainty, PNG and export paths, using the recorded timestamps, exposure, gain and dark references and verifying each frame's SHA-256. It starts from the recorded analysis settings, which remain editable. Exposure, gain and dark capture are locked. Each loop starts a new uncertainty window. Pacing follows the recorded intervals clamped to 0.02–1 s, so the original frame rate is only approximated. Exports from a replay identify the session, recording and frame.
+
 ## Export format
 
 **Export raw data** writes one ZIP per frame, using open formats:
@@ -77,6 +95,7 @@ The export now also contains `uncertainty-samples.csv` and full uncertainty meta
 | `uncertainty-samples.csv` | The exact timestamped per-frame values in the current statistics window |
 | `details.txt` | Plain-text (UTF-8) summary: time, camera and serial, format, exposure/gain, scale, ROI, background/threshold/dark settings, all results with uncertainties, warnings, method and software version |
 | `inspection.png` | The same sheet as **Save PNG** |
+| `session-log.jsonl` | The session event log up to this export |
 
 Lengths are in the unit stated in `metrics.unit` (`µm` with a known pixel pitch, otherwise `px`); centroids are always in pixels. A snapshot can be reopened with `--restore-snapshot` as described above.
 

@@ -50,6 +50,13 @@ def handler_for(profiler):
             palette = parse_qs(url.query).get("palette", ["thermal"])[0]
             if path == "/api/status":
                 return self.respond(200, profiler.status())
+            if path == "/api/log":
+                try:
+                    after = int(parse_qs(url.query).get("after", ["0"])[0])
+                except ValueError:
+                    return self.respond(400, {"error": "after must be an integer."})
+                return self.respond(200, {"entries": profiler.log.since(after), "seq": profiler.log.seq,
+                                          "folder": str(profiler.log.directory) if profiler.log.directory else None})
             if path == "/api/frame":
                 return self.respond(200, profiler.packet())
             if path == "/api/export":
@@ -87,7 +94,7 @@ def handler_for(profiler):
                     return self.respond(404, {"error": "Not found."})
                 action = path.removeprefix("/api/")
                 if action not in {"scan","connect","disconnect","pause","configure","analysis",
-                                  "dark","uncertainty","reset_statistics"}:
+                                  "dark","uncertainty","reset_statistics","record"}:
                     return self.respond(404, {"error": "Unknown action."})
                 result = profiler.request(action, data)
                 self.respond(200, result)
@@ -101,9 +108,13 @@ def handler_for(profiler):
 def main():
     parser = argparse.ArgumentParser(description="Local USB beam profiler")
     parser.add_argument("--port", type=int, default=8877)
+    parser.add_argument("--sessions-dir", type=Path, default=Path("sessions"),
+                        help="Folder for session logs and recordings (default: ./sessions)")
     parser.add_argument("--restore-snapshot", type=Path, help="Restore a local export and start frozen; statistics reset")
     args = parser.parse_args()
-    profiler = Profiler()
+    profiler = Profiler(args.sessions_dir)
+    if profiler.log.error:
+        print(profiler.log.error, flush=True)
     try:
         server = ThreadingHTTPServer(("127.0.0.1", args.port), handler_for(profiler))
     except OSError as error:
@@ -113,10 +124,14 @@ def main():
         profiler.request("scan")
         if args.restore_snapshot:
             try:
-                profiler.request("restore_snapshot", {"archive":args.restore_snapshot.read_bytes()})
+                profiler.request("restore_snapshot", {"archive":args.restore_snapshot.read_bytes(),
+                                                      "source":str(args.restore_snapshot)})
             except (OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
                 parser.exit(1, f"Could not restore {args.restore_snapshot}: {error}\n")
+        profiler.log.add("server_start", f"Serving http://127.0.0.1:{args.port}.", port=args.port)
         print(f"Beam profiler: http://127.0.0.1:{args.port}", flush=True)
+        if profiler.log.directory:
+            print(f"Session log and recordings: {profiler.log.directory}", flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass

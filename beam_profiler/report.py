@@ -81,11 +81,15 @@ def details_text(snap, palette="thermal"):
     calibration = u.get("calibration") or {}
     missing = ", ".join(calibration.get("missing") or []) or "none"
     lines = [
-        "BEAM LAB · SINGLE-FRAME BEAM PROFILE" + ("  [SIMULATED DATA]" if camera.get("simulated") else ""),
+        "BEAM LAB · SINGLE-FRAME BEAM PROFILE" + ("  [REPLAY]" if camera.get("replay") else "")
+        + ("  [SIMULATED DATA]" if camera.get("simulated") else ""),
         "",
         f"Frame time (UTC)   {snap.packet['timestamp']}",
         f"Camera             {camera.get('vendor', '')} {camera.get('model', '')}".rstrip(),
-        f"Serial / driver    {camera.get('serial', '—')} / {camera.get('driver', '—')}",
+        f"Serial / driver    {camera.get('serial', '—')} / {camera.get('recorded_driver') or camera.get('driver', '—')}",
+        *([f"Source             replay of {camera['replay']['session']}/{camera['replay']['recording']}, "
+           f"recorded frame {camera['replay']['frame']} of {camera['replay']['frames']} (original timestamp)"]
+          if camera.get("replay") else []),
         f"Image              {snap.pixels.shape[1]} × {snap.pixels.shape[0]} px · "
         f"{camera.get('pixel_format', '—')} · full scale {m['maximum_dn']} DN",
         f"Exposure / gain    {camera.get('exposure_us', float('nan')):.6g} µs / {camera.get('gain_db', float('nan')):.4g} dB",

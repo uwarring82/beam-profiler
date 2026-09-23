@@ -9,6 +9,10 @@ class Frame:
     pixels: np.ndarray
     maximum: int
     pixel_format: str
+    # Set by replay only: recorded timestamp, recorded dark reference, first frame of a loop.
+    timestamp: str | None = None
+    dark: np.ndarray | None = None
+    restart: bool = False
 
 
 class Camera(Protocol):
