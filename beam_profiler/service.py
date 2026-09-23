@@ -49,6 +49,7 @@ class Profiler:
         self.camera = None
         self.snapshot = None
         self.dark = None
+        self.dark_warning = None
         self.commands = Queue()
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -89,7 +90,7 @@ class Profiler:
         with self.lock:
             self.snapshot = None
         if dark:
-            self.dark = None
+            self._set_dark(None)
             self._update(dark_active=False)
 
     def _reset_statistics(self, reason="Measurement conditions changed."):
@@ -314,7 +315,7 @@ class Profiler:
             if self._replaying() and not data.get("clear"):
                 raise ValueError("A replay uses its recorded dark references.")
             if data.get("clear"):
-                self.dark = None
+                self._set_dark(None)
                 self.log.add("dark_clear", "Dark reference cleared.")
             else:
                 if self.camera.info["exposure_us"] > 1_000_000:
@@ -322,8 +323,8 @@ class Profiler:
                 # Drain queued frames first so the reference reflects the blocked beam.
                 for _ in range(8):
                     self.camera.read()
-                frames = [self.camera.read().pixels.astype(np.float64) for _ in range(8)]
-                self.dark = np.mean(frames, axis=0)
+                frames = [self.camera.read() for _ in range(8)]
+                self._set_dark(np.mean([f.pixels.astype(np.float64) for f in frames], axis=0), frames[-1].maximum)
                 self.log.add("dark_capture", f"Dark reference captured: mean of 8 frames, mean level {float(self.dark.mean()):.4g} DN.",
                              exposure_us=self.camera.info["exposure_us"], gain_db=self.camera.info["gain_db"])
             self._invalidate(dark=False)
@@ -364,13 +365,24 @@ class Profiler:
                     "pixel_pitch_u_um":calibration.get("pixel_pitch_u_um"),
                     "magnification_u":calibration.get("magnification_u"),
                     "scale_correlation":calibration.get("correlation",0.)})
-            self.dark = dark
+            self._set_dark(dark, maximum)
             self._update(paused=True, dark_active=dark is not None)
             self._reset_statistics("Snapshot restored; resume to collect fresh uncertainty samples.")
             self._publish(pixels, maximum, timestamp, count=False)
         except Exception:
             self._disconnect()
             raise
+
+    def _set_dark(self, dark, maximum=None):
+        """Use a dark reference, checking it for beam light that would bias every measurement."""
+        self.dark, self.dark_warning = dark, None
+        if dark is None:
+            return
+        check, _, _ = analyze(dark, maximum or float(dark.max()) or 1.)
+        if check["valid"]:
+            self.dark_warning = (f"Dark reference contains a beam-like signal (peak {check['peak_dn']} DN); "
+                                 "block the beam and recapture it.")
+            self.log.add("warning", self.dark_warning, dark_centroid_px=[check["centroid_x_px"], check["centroid_y_px"]])
 
     def _require_camera(self):
         if not self.camera:
@@ -386,6 +398,8 @@ class Profiler:
     def _publish(self, pixels, maximum, timestamp=None, count=True):
         settings = dict(self.settings)
         metrics, px, py = analyze(pixels, maximum, dark=self.dark, **settings)
+        if self.dark is not None and self.dark_warning:
+            metrics["warnings"].append(self.dark_warning)
         # Preview is display-only: all measurements above use the full native array.
         display = Image.fromarray(preview_levels(pixels, maximum))
         display.thumbnail((960, 720))
@@ -450,7 +464,7 @@ class Profiler:
                             self._reset_statistics("Replay restarted from the first recorded frame.")
                             self.log.add("replay_start", f"Replay started at recorded frame 1 of {len(self.camera.rows)}.")
                         if frame.dark is not self.dark:
-                            self.dark = frame.dark
+                            self._set_dark(frame.dark, frame.maximum)
                             self._update(dark_active=frame.dark is not None)
                     if not self.state["paused"]:
                         timestamp = self._publish(frame.pixels, frame.maximum, frame.timestamp)

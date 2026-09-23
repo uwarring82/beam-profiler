@@ -122,6 +122,7 @@ function clearFrame() {
   $('peak-bar').style.width = '0%'; $('quality-title').textContent = 'Waiting for a frame';
   $('quality-detail').textContent = 'Measurements use native camera pixels. The preview is scaled for display.';
   document.querySelector('.quality').classList.remove('warn');
+  document.querySelector('.metric-grid').classList.remove('warn');
   renderUncertainty(null);
   draw(); drawProfile('x', null); drawProfile('y', null);
 }
@@ -151,6 +152,8 @@ async function acceptFrame(next) {
   $('timestamp').textContent = new Date(packet.timestamp).toLocaleTimeString() + ' · ' + (packet.replay ? `Recorded frame ${packet.replay.frame} of ${packet.replay.frames}` : packet.simulated ? 'Simulated frame' : 'Camera frame');
   const warnings = m.warnings;
   document.querySelector('.quality').classList.toggle('warn', warnings.length > 0);
+  // Values stay visible for diagnosis but are marked as unreliable.
+  document.querySelector('.metric-grid').classList.toggle('warn', warnings.length > 0);
   $('quality-title').textContent = !m.valid ? 'No clear beam detected' : warnings.length ? 'Check measurement conditions' : 'Intensity signal detected';
   $('quality-detail').textContent = warnings.length ? warnings.join(' ') :
     'D4σ from background-corrected intensity moments. Threshold and ROI affect the measured beam width.';
@@ -195,7 +198,7 @@ function renderUncertainty(u) {
   $('uncertainty-count').textContent=`${u?.sample_count || 0} / ${u?.window_frames || state?.uncertainty_settings?.window_frames || 60} FRAMES`;
   $('uncertainty-status').textContent=!u ? 'Waiting for frames' : u.status==='blocked' ? 'Estimate withheld · check image quality' : u.status==='warming_up' ? 'Collecting repeatability data' : u.status==='changing' ? 'Signal changing · spread includes motion/drift' : 'Repeatability estimated · partial uncertainty budget';
   const text=!u || u.status==='warming_up' ? 'At least 20 consecutive valid frames are needed. Camera, ROI, analysis and calibration changes reset the window.' :
-    u.status==='blocked' ? 'Saturated, truncated or unclear beam images cannot provide reliable uncertainty estimates.' :
+    u.status==='blocked' ? 'An image-quality warning (see above) prevents a reliable estimate. Saturated, truncated or unclear beams, or a dark reference containing beam light, reset the window.' :
     `${u.sample_count} consecutive frames over ${fmt(u.duration_s,1)} s. ${u.warnings.join(' ')}`;
   $('uncertainty-detail').textContent=text;
   $('uncertainty-budget').textContent=u?.calibration.complete ?

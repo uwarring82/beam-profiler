@@ -68,7 +68,10 @@ def analyze(pixels, maximum, *, pixel_pitch_um=None, magnification=1., roi=None,
         boundary = float(px[:2].sum() + px[-2:].sum() + py[:2].sum() + py[-2:].sum())
         exceeds_roi = (cx - 2*np.sqrt(vx) < x0 or cx + 2*np.sqrt(vx) >= x1 or
                        cy - 2*np.sqrt(vy) < y0 or cy + 2*np.sqrt(vy) >= y1)
-        if boundary / total > .01 or exceeds_roi:
+        # A beam cut by the ROI shrinks its own second moments, so the
+        # moment-based test above can pass; also check each profile edge.
+        edge_level = max(px[0], px[-1]) / max(float(px.max()), 1e-12), max(py[0], py[-1]) / max(float(py.max()), 1e-12)
+        if boundary / total > .01 or exceeds_roi or max(edge_level) > .01:
             warnings.append("Signal reaches the ROI boundary; beam widths may be truncated.")
     else:
         warnings.append("No clear beam signal. Adjust exposure, background or the analysis region.")

@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 import pytest
 
+from beam_profiler.cameras.base import Frame
 from beam_profiler.service import Profiler
 
 
@@ -200,5 +201,29 @@ def test_png_requires_a_frame():
     p=Profiler()
     try:
         with pytest.raises(ValueError): p.inspection()
+    finally:
+        p.close()
+
+
+def test_dark_reference_with_beam_light_is_flagged(profiler):
+    # The simulator cannot block its beam, so its dark reference contains the beam.
+    profiler.request("dark")
+    packet = wait_frame(profiler, profiler.status()["frame_count"])
+    assert profiler.status()["dark_active"]
+    assert any("Dark reference contains a beam-like signal" in w for w in packet["metrics"]["warnings"])
+    assert packet["uncertainty"]["status"] == "blocked"
+    assert any(e["event"] == "warning" and "Dark reference" in e["message"] for e in profiler.log.since(0))
+    profiler.request("dark", {"clear": True})
+    packet = wait_frame(profiler, profiler.status()["frame_count"])
+    assert not any("Dark reference" in w for w in packet["metrics"]["warnings"])
+
+
+def test_blocked_dark_reference_is_accepted_silently():
+    p = Profiler()
+    try:
+        p.request("connect", {"id": "demo"})
+        p.camera.read = lambda: Frame(np.random.default_rng(0).normal(30, 1.5, (720, 960)).clip(0).astype(np.uint16), 4095, "Mono12")
+        p.request("dark")
+        assert p.status()["dark_active"] and p.dark_warning is None
     finally:
         p.close()

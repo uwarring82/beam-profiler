@@ -84,3 +84,13 @@ def test_black_clipped_quantized_sensor_noise():
 def test_plain_text_rounding_matches_two_digit_uncertainty(value,u,expected):
     from beam_profiler.report import with_uncertainty
     assert with_uncertainty(value,u) == expected
+
+
+def test_roi_cutting_the_beam_is_flagged_even_when_moments_shrink():
+    # Left ROI edge 0.8 of the 1/e² radius from the centre: moments shrink, so
+    # only the profile-edge test catches the truncation.
+    m, px, _ = analyze(gaussian(), 4095, roi=[217, 0, 500, 400])
+    assert m["valid"] and px[0] / px.max() > .2
+    assert any("boundary" in w for w in m["warnings"])
+    contained, _, _ = analyze(gaussian(), 4095)
+    assert contained["warnings"] == []

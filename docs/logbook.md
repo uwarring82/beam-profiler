@@ -2,6 +2,15 @@
 
 Consequential changes and how they were validated. Newest first.
 
+## 2026-09-24 · 0.3.1 · Fixes found by a simulator dashboard tour
+
+A scripted tour drove the dashboard through its states with the simulator: offline, warm-up, live, saturated, empty ROI, truncating ROI, dark reference, frozen, recording, replay, PNG. It found two measurement-integrity gaps:
+
+- **Truncation not flagged.** An ROI cutting the beam at about 0.8 of the 1/e² radius shrank the second moments (D4σ X 695 µm instead of about 833 µm) without a warning, so a normal uncertainty was shown. Added a profile-edge test: an integrated profile at an ROI edge above 1% of its peak now raises the truncation warning.
+- **Dark reference containing the beam accepted silently.** Each dark reference (captured, restored or replayed) is now analyzed like a beam frame. If it contains a beam-like signal, every measurement using it carries a warning and uncertainty is withheld.
+- Value cards turn amber whenever a quality warning applies.
+- Validation: 68 tests, including regressions for both gaps; the tour was re-run and both states are now flagged.
+
 ## 2026-09-24 · 0.3.0 · Session log and replay
 
 - Added a per-run event log (`sessions/session-…/log.jsonl`), a UI log panel and `session-log.jsonl` in exports.
