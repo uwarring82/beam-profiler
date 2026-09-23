@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beam-profiler"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local laser beam profiler: GenICam camera acquisition via Aravis, D4σ moment analysis and a documented partial uncertainty budget."
 readme = "README.md"
 license = "MIT"

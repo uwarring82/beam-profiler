@@ -3,7 +3,7 @@ import json
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .service import Profiler
 
@@ -45,14 +45,21 @@ def handler_for(profiler):
         def do_GET(self):
             if not self.local_request():
                 return self.respond(403, {"error": "Local access only."})
-            path = urlparse(self.path).path
+            url = urlparse(self.path)
+            path = url.path
+            palette = parse_qs(url.query).get("palette", ["thermal"])[0]
             if path == "/api/status":
                 return self.respond(200, profiler.status())
             if path == "/api/frame":
                 return self.respond(200, profiler.packet())
             if path == "/api/export":
                 try:
-                    return self.respond(200, profiler.export(), "application/zip", "beam-snapshot.zip")
+                    return self.respond(200, profiler.export(palette), "application/zip", "beam-snapshot.zip")
+                except ValueError as error:
+                    return self.respond(409, {"error": str(error)})
+            if path == "/api/png":
+                try:
+                    return self.respond(200, profiler.inspection(palette), "image/png", "beam-inspection.png")
                 except ValueError as error:
                     return self.respond(409, {"error": str(error)})
             files = {"/": ("index.html", "text/html; charset=utf-8"),

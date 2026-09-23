@@ -77,3 +77,10 @@ def test_black_clipped_quantized_sensor_noise():
     m, _, _ = analyze(pixels, 65535)
     assert m["noise_dn"] > 0
     assert not m["valid"]
+
+
+@pytest.mark.parametrize("value,u,expected", [(123.456,.0996,("123.46","0.10")), (123.456,1.234,("123.5","1.2")),
+                                              (1234.5,123,("1230","120")), (5.,None,("5",None))])
+def test_plain_text_rounding_matches_two_digit_uncertainty(value,u,expected):
+    from beam_profiler.report import with_uncertainty
+    assert with_uncertainty(value,u) == expected

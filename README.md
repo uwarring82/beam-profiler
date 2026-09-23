@@ -39,7 +39,8 @@ The application uses the open-source Aravis GenICam library rather than a vendor
 - Single-frame uncertainty from rolling repeatability, optional correlated scale calibration, and an explicit partial uncertainty budget.
 - Integrated X/Y profiles, peak intensity, saturation and clipped-region warnings.
 - Border background subtraction, adjustable noise threshold, averaged dark reference.
-- Freeze/resume and ZIP snapshot export containing raw TIFF, measurement JSON and profile CSVs. An active dark reference is included as float TIFF.
+- Freeze/resume and ZIP snapshot export containing raw TIFF, measurement JSON, profile CSVs, a plain-text details file and the inspection PNG. An active dark reference is included as float TIFF.
+- **Save PNG**: an inspection sheet with the color-mapped frame, ROI, centroid and D4σ ellipse, both profiles, and every acquisition setting, analysis setting, result, uncertainty and warning as plain text.
 
 All capture and analysis run locally. The HTTP server binds only to loopback. The camera is opened only when selected and connected. Freeze retains the analyzed frame while acquisition continues to drain incoming buffers; resume displays fresh data. Disconnect releases USB ownership. Camera settings are adjusted in the current session; no camera user set is saved to flash.
 
@@ -65,7 +66,7 @@ The export now also contains `uncertainty-samples.csv` and full uncertainty meta
 
 ## Export format
 
-**Export snapshot** writes one ZIP per frame, using open formats:
+**Export raw data** writes one ZIP per frame, using open formats:
 
 | File | Content |
 | --- | --- |
@@ -74,8 +75,12 @@ The export now also contains `uncertainty-samples.csv` and full uncertainty meta
 | `measurement.json` | UTC timestamp, camera model/serial/format/exposure/gain, analysis settings, all metrics and warnings, full uncertainty result with covariance matrices and field order |
 | `profile_x.csv`, `profile_y.csv` | `position_px,integrated_intensity_dn` over the analysis ROI |
 | `uncertainty-samples.csv` | The exact timestamped per-frame values in the current statistics window |
+| `details.txt` | Plain-text (UTF-8) summary: time, camera and serial, format, exposure/gain, scale, ROI, background/threshold/dark settings, all results with uncertainties, warnings, method and software version |
+| `inspection.png` | The same sheet as **Save PNG** |
 
 Lengths are in the unit stated in `metrics.unit` (`µm` with a known pixel pitch, otherwise `px`); centroids are always in pixels. A snapshot can be reopened with `--restore-snapshot` as described above.
+
+**Save PNG** writes only the inspection sheet (`beam-inspection-….png`) in the selected color map. The `details.txt` text is drawn on the sheet and also stored in the PNG's `Description` text chunk. The full `measurement.json` record is stored in a compressed `measurement.json` text chunk, so a standalone PNG still carries its metadata (read with `exiftool`, or `PIL.Image.open(path).text` in Python). The PNG is a display rendering; measure from `raw.tiff`.
 
 ## Add cameras
 

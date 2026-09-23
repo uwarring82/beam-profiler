@@ -170,3 +170,35 @@ def test_restore_preserves_frozen_pixels_and_dark_but_not_statistics(profiler):
     np.testing.assert_array_equal(restored.pixels,previous.pixels)
     np.testing.assert_allclose(restored.dark,previous.dark,rtol=1e-6)
     assert restored.packet["uncertainty"]["sample_count"] == 0
+
+
+def test_png_and_raw_export_carry_the_same_plain_text_record(profiler):
+    profiler.request("uncertainty",{"window_frames":20})
+    deadline=time.monotonic()+6
+    while time.monotonic()<deadline and (profiler.packet() or {"uncertainty":{"sample_count":0}})["uncertainty"]["sample_count"]<20:
+        time.sleep(.03)
+    profiler.request("pause",{"paused":True})
+    frozen=profiler.packet()
+    png=Image.open(BytesIO(profiler.inspection("gray")))
+    png.load()
+    text=png.text["Description"]
+    assert png.format == "PNG" and png.mode == "RGB"
+    for expected in [frozen["timestamp"], "SIMULATED", "Gaussian beam simulator", "Mono12",
+                     "Exposure / gain", "D4σ diameter X", "± ", "3.45 µm pixel pitch", "Dark reference     none"]:
+        assert expected in text
+    assert png.text["Creation Time"] == frozen["timestamp"]
+    record=json.loads(png.text["measurement.json"])
+    assert record["metrics"] == frozen["metrics"] and record["uncertainty"] == frozen["uncertainty"]
+    archive=zipfile.ZipFile(BytesIO(profiler.export("gray")))
+    assert {"raw.tiff","measurement.json","details.txt","inspection.png"} <= set(archive.namelist())
+    assert archive.read("details.txt").decode() == text
+    assert json.loads(archive.read("measurement.json")) == record
+    with pytest.raises(ValueError): profiler.inspection("rainbow")
+
+
+def test_png_requires_a_frame():
+    p=Profiler()
+    try:
+        with pytest.raises(ValueError): p.inspection()
+    finally:
+        p.close()

@@ -15,6 +15,7 @@ import numpy as np
 from PIL import Image
 
 from .analysis import analyze
+from .report import details_text, inspection_png, measurement, preview_levels
 from .cameras.aravis import Aravis, AravisCamera, CameraError
 from .cameras.demo import DemoCamera
 from .uncertainty import DEFAULTS as UNCERTAINTY_DEFAULTS, FIELDS, MIN_SAMPLES, UncertaintyWindow
@@ -299,7 +300,7 @@ class Profiler:
         settings = dict(self.settings)
         metrics, px, py = analyze(pixels, maximum, dark=self.dark, **settings)
         # Preview is display-only: all measurements above use the full native array.
-        display = Image.fromarray((pixels.astype(np.float32) / maximum * 255).clip(0, 255).astype(np.uint8))
+        display = Image.fromarray(preview_levels(pixels, maximum))
         display.thumbnail((960, 720))
         out = BytesIO()
         display.save(out, format="PNG")
@@ -360,21 +361,27 @@ class Profiler:
         finally:
             self._disconnect()
 
-    def export(self):
+    def _exported_snapshot(self):
         with self.lock:
             snap = self.snapshot
         if snap is None:
             raise ValueError("No frame is available to export.")
+        return snap
+
+    def inspection(self, palette="thermal"):
+        """Inspection PNG of the same frame and statistics an export would contain."""
+        return inspection_png(self._exported_snapshot(), palette)
+
+    def export(self, palette="thermal"):
+        snap = self._exported_snapshot()
         out = BytesIO()
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
             raw = BytesIO()
             Image.fromarray(snap.pixels).save(raw, format="TIFF")
             archive.writestr("raw.tiff", raw.getvalue())
-            archive.writestr("measurement.json", json.dumps({"timestamp": snap.packet["timestamp"],
-                "camera": snap.camera, "settings": snap.settings, "metrics": snap.metrics,
-                "uncertainty": snap.packet["uncertainty"],
-                "dark_active": snap.dark is not None,
-                "method": "Thresholded, background-corrected intensity moments; D4sigma diameter"}, indent=2))
+            archive.writestr("measurement.json", json.dumps(measurement(snap), indent=2))
+            archive.writestr("details.txt", details_text(snap, palette))
+            archive.writestr("inspection.png", inspection_png(snap, palette))
             samples = StringIO(newline="")
             writer = csv.DictWriter(samples, fieldnames=["timestamp", *FIELDS])
             writer.writeheader()
