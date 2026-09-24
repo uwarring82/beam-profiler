@@ -6,6 +6,18 @@
 
 A local laser beam profiler with a browser UI and Python camera acquisition. Built and hardware-tested on an Apple Silicon Mac with a **FLIR Firefly FFY-U3-16S2M-DL**, serial **20415440**. A built-in Gaussian beam simulator runs without any camera.
 
+## Screenshots
+
+Recorded with the built-in simulator ([all states](docs/images/)):
+
+| Live measurement with uncertainty | Truncating ROI flagged |
+| --- | --- |
+| ![Live simulator measurement with D4σ, centroid, ellipticity and partial uncertainties](docs/images/03-live-ready.png) | ![ROI cutting the beam: amber values, truncation warning, uncertainty withheld](docs/images/06-roi-truncated.png) |
+| **Replay of a recording** | **Inspection PNG (Save PNG)** |
+| ![Replay of a recorded session with original timestamps](docs/images/09-replay.png) | ![Inspection sheet with image, overlays, profiles and plain-text details](docs/images/10-inspection.png) |
+
+Further states: [offline](docs/images/01-offline.png), [warm-up](docs/images/02-warming-up.png), [saturated](docs/images/04-saturated.png), [ROI without beam](docs/images/05-roi-no-beam.png), [dark reference containing beam light](docs/images/07-frozen-dark-roi.png), [recording](docs/images/08-recording.png).
+
 ## Install
 
 Python 3.11+ is required:
