@@ -94,7 +94,7 @@ def handler_for(profiler):
                     return self.respond(404, {"error": "Not found."})
                 action = path.removeprefix("/api/")
                 if action not in {"scan","connect","disconnect","pause","configure","analysis",
-                                  "dark","uncertainty","reset_statistics","record"}:
+                                  "dark","uncertainty","reset_statistics","record","auto_exposure"}:
                     return self.respond(404, {"error": "Unknown action."})
                 result = profiler.request(action, data)
                 self.respond(200, result)

@@ -107,6 +107,8 @@ def test_replay_reproduces_recorded_frames_and_timestamps(session):
         p.request("dark")
     with pytest.raises(ValueError):
         p.request("record", {"recording": True})
+    with pytest.raises(ValueError, match="fixed in a recording"):
+        p.request("auto_exposure")
 
 
 def test_replay_loops_with_a_fresh_window_and_detects_tampering(session):

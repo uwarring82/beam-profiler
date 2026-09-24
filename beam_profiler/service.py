@@ -24,6 +24,10 @@ from .session import Recorder, SessionLog, list_recordings
 from .uncertainty import DEFAULTS as UNCERTAINTY_DEFAULTS, FIELDS, MIN_SAMPLES, UncertaintyWindow
 
 
+# Auto exposure aims for a peak well below saturation and accepts a band around it.
+AUTO_TARGET, AUTO_BAND, AUTO_MAX_STEPS, AUTO_MAX_EXPOSURE_US = .75, (.6, .9), 8, 1_000_000
+
+
 @dataclass(frozen=True)
 class Snapshot:
     pixels: np.ndarray
@@ -59,7 +63,7 @@ class Profiler:
         self.uncertainty = UncertaintyWindow({**self.uncertainty_settings, **self.settings})
         self.state = {"connected": False, "paused": False, "camera": None, "error": None,
                       "frame_count": 0, "fps": 0., "dark_active": False, "devices": [],
-                      "driver_error": None, "recording": None,
+                      "driver_error": None, "recording": None, "auto_exposure": None,
                       "session": self.log.directory.name if self.log.directory else None,
                       "log_error": self.log.error}
         self.log.add("session_start", f"Beam profiler {__version__} session started.",
@@ -295,6 +299,12 @@ class Profiler:
             self._restore_snapshot(data["archive"])
             self.log.add("restore_snapshot", f"Restored snapshot frame {self.snapshot.packet['timestamp']}; frozen.",
                          source=data.get("source"))
+        elif action == "auto_exposure":
+            self._require_camera()
+            if self._replaying():
+                raise ValueError("Exposure is fixed in a recording.")
+            target = self._number(data.get("target_percent", AUTO_TARGET * 100), 20, 95, "Target peak") / 100
+            self._auto_exposure(target)
         elif action == "record":
             self._require_camera()
             if not isinstance(data.get("recording"), bool):
@@ -372,6 +382,63 @@ class Profiler:
         except Exception:
             self._disconnect()
             raise
+
+    @staticmethod
+    def _robust_peak(pixels):
+        # The 20th-brightest pixel: isolated hot pixels cannot set the exposure.
+        flat = pixels.ravel()
+        k = min(20, flat.size)
+        return float(np.partition(flat, flat.size - k)[flat.size - k])
+
+    def _auto_exposure(self, target=None):
+        """One-shot: iterate exposure at fixed gain until the ROI peak is 60–90% of full scale."""
+        target = target or AUTO_TARGET
+        low, high = self.camera.info["exposure_us_range"]
+        high = min(high, AUTO_MAX_EXPOSURE_US)
+        gain = self.camera.info["gain_db"]
+        exposure = min(max(self.camera.info["exposure_us"], low), high)
+        steps, outcome = [], None
+        try:
+            for _ in range(AUTO_MAX_STEPS):
+                self.camera.configure(exposure, gain)
+                exposure = self.camera.info["exposure_us"]
+                self.camera.read()
+                frame = self.camera.read()  # the second frame is fully exposed at the new setting
+                x0, y0, x1, y1 = self.settings["roi"] or (0, 0, frame.pixels.shape[1], frame.pixels.shape[0])
+                region = frame.pixels[y0:y1, x0:x1]
+                peak, offset = self._robust_peak(region), float(np.percentile(region, .5))
+                fraction = peak / frame.maximum
+                steps.append({"exposure_us": exposure, "peak_percent": round(fraction * 100, 2)})
+                if AUTO_BAND[0] <= fraction <= AUTO_BAND[1]:
+                    outcome = ("converged", f"Auto exposure: {exposure:.6g} µs at {gain:.4g} dB gives a peak of {fraction:.0%}.")
+                    break
+                if fraction >= .998:
+                    proposed = exposure / 4
+                else:
+                    # Linear response above the offset; bounded steps absorb nonlinearity and noise.
+                    signal = max(peak - offset, .005 * frame.maximum)
+                    proposed = exposure * min(10., max(.1, (target * frame.maximum - offset) / signal))
+                # Whole microseconds: cameras quantize exposure anyway, and the value stays readable.
+                proposed = min(max(float(round(proposed)), low), high)
+                if abs(proposed - exposure) <= 1e-6 * exposure:
+                    advice = ("still saturated at the shortest exposure: add ND or lower the gain" if fraction >= .998
+                              else "signal too weak at the longest auto exposure: raise the gain or the power")
+                    outcome = ("limited", f"Auto exposure stopped at {exposure:.6g} µs, peak {fraction:.0%}: {advice}.")
+                    break
+                exposure = proposed
+            else:
+                outcome = ("not_converged", f"Auto exposure did not settle in {AUTO_MAX_STEPS} steps; "
+                           f"last {exposure:.6g} µs, peak {steps[-1]['peak_percent']:.0f}%. Is the signal changing?")
+        finally:
+            # Exposure changed: the dark reference and statistics no longer apply.
+            self._invalidate()
+            self._update(camera=dict(self.camera.info), paused=False,
+                         auto_exposure={"status": outcome[0] if outcome else "failed",
+                                        "message": outcome[1] if outcome else "Auto exposure failed.",
+                                        "target_percent": target * 100, "steps": steps})
+            if outcome:
+                self.log.add("auto_exposure", outcome[1] + " Dark reference cleared.", status=outcome[0],
+                             target_percent=target * 100, gain_db=gain, steps=steps)
 
     def _set_dark(self, dark, maximum=None):
         """Use a dark reference, checking it for beam light that would bias every measurement."""

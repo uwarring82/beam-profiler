@@ -36,6 +36,7 @@ The application uses the open-source Aravis GenICam library rather than a vendor
 - Camera discovery, connection and clean release; explicit simulator source.
 - Native monochrome acquisition, preferring Mono16, then Mono12/10/8.
 - Exposure and gain controls with ranges and accepted values read from hardware.
+- One-shot **Auto exposure** for beam profiling: sets exposure at the current gain so the brightest pixels reach about 75% of full scale.
 - Fixed-scale thermal/grayscale image, centroid crosshair, D4σ ellipse, draggable analysis ROI.
 - Intensity-weighted centroid, sensor-axis and principal-axis D4σ diameters, ellipticity and angle.
 - Single-frame uncertainty from rolling repeatability, optional correlated scale calibration, and an explicit partial uncertainty budget.
@@ -56,6 +57,8 @@ Processing subtracts an optional averaged dark reference, then the ROI-border me
 The Firefly pixel pitch is **3.45 µm**, from the [manufacturer specification](https://softwareservices.flir.com/FFY-U3-16S2-DL/latest/Model/spec.html). Physical scale is `pixel pitch / magnification`. At 1× this is a sensor-plane result. Verify optical magnification and effective pixel pitch if using camera binning, decimation or resized optical imaging. Unknown models default to pixel units. This version does not change camera binning or hardware ROI; the draggable ROI is analysis-only.
 
 Thresholding, residual background, truncation, saturation and spatially nonuniform illumination affect second moments. Use an appropriate ROI and dark reference, and inspect profiles. These are practical estimates, not a certified ISO 11146 measurement system or an optical power calibration. No M² or propagation measurement is claimed.
+
+**Auto exposure** is a one-shot adjustment, not the camera's mean-brightness auto mode (that stays disabled; it would saturate a small bright beam). It changes exposure only, keeping the gain, until the peak in the analysis ROI is 60–90% of full scale (target 75%). The peak is the 20th-brightest pixel, so a few hot pixels cannot set it. Each step discards one frame and evaluates the next. Exposure is scaled linearly above a low-percentile offset and divided by 4 while saturated, for at most 8 steps up to 1 s. If the camera limits are reached, the result says so (add ND or lower gain; raise gain or power). Like any exposure change, it clears the dark reference and the uncertainty window, so capture a new dark reference afterwards. The steps are logged.
 
 Dark references average 8 fresh frames after draining older frames. Block the beam before capture. Each dark reference (captured, restored or replayed) is analyzed like a beam frame; if it contains a beam-like signal, every measurement using it carries a warning, the value cards turn amber and uncertainty estimates are withheld. The built-in simulator cannot block its beam, so a simulator dark reference always shows this warning. Changing exposure/gain or switching cameras clears the reference. Capture requires exposure ≤1 s. Export after **Freeze** to retain the exact displayed frame; during live acquisition export uses the latest completed frame atomically.
 

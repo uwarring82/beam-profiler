@@ -2,6 +2,12 @@
 
 Consequential changes and how they were validated. Newest first.
 
+## 2026-09-24 · 0.4.0 · One-shot auto exposure
+
+- Added software auto exposure aimed at a 75% peak in the analysis ROI (accepted 60–90%), at fixed gain. The camera's mean-brightness ExposureAuto stays disabled because it saturates small bright beams, which was the failure in the first real frame (30 ms, 5 dB, 6.3% saturated).
+- The 20th-brightest pixel is used as the robust peak. Exposure is ÷4 while saturated and scaled linearly otherwise (step factor bounded to 0.1–10). At most 8 steps, capped at 1 s; the result reports when camera limits are reached. It clears the dark reference and window, and is logged.
+- Validation: 79 tests on the simulator. They cover convergence from saturated, dim and good starts, hot pixels, both limit cases, the replay lock and invalid targets. Not yet validated on the Firefly.
+
 ## 2026-09-24 · 0.3.2 · First real beam frame: non-dark border detection
 
 The first real beam frame was a 650 nm laser pointer through single-mode fibre (no collimator), ND 3.0, Firefly at 30 ms and 5 dB, frozen at 07:51:32 UTC. The diverging beam is larger than the 5.0 × 3.7 mm sensor, and 6.3% of pixels are saturated. The border median (7680 DN) and the border spread (5376 DN) were beam wings, not background and noise. Subtracting them and thresholding at 3 σ left only the core: D4σ 2.66 × 2.74 mm, against 4.1 × 3.6 mm with no threshold or border subtraction, which is itself only a lower bound. Only saturation was flagged.
