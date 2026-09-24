@@ -6,7 +6,7 @@ authors:
   - family-names: Warring
     given-names: Ulrich
     affiliation: University of Freiburg
-version: 0.3.1
+version: 0.3.2
 date-released: 2026-09-24
 license: MIT
 repository-code: "https://github.com/uwarring82/beam-profiler"

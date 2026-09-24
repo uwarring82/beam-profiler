@@ -94,3 +94,20 @@ def test_roi_cutting_the_beam_is_flagged_even_when_moments_shrink():
     assert any("boundary" in w for w in m["warnings"])
     contained, _, _ = analyze(gaussian(), 4095)
     assert contained["warnings"] == []
+
+
+def test_beam_wider_than_the_roi_is_not_mistaken_for_background():
+    # A diverging fibre output larger than the sensor: the border holds smooth beam
+    # wings, which the border estimate would otherwise treat as background and noise.
+    y, x = np.mgrid[:400, :500]
+    pixels = 60000 * np.exp(-2 * ((x - 250) ** 2 + (y - 200) ** 2) / 260 ** 2)
+    pixels += np.random.default_rng(4).normal(30, 3, pixels.shape)
+    m, _, _ = analyze(pixels, 65535)
+    assert any("border is not dark" in w for w in m["warnings"])
+
+
+@pytest.mark.parametrize("pixels", [gaussian(), np.random.default_rng(3).normal(100, 3, (100, 100)),
+                                    np.maximum(0, np.round(np.random.default_rng(12).normal(0, .6, (400, 500)))) * 64])
+def test_dark_or_noisy_borders_are_not_flagged(pixels):
+    m, _, _ = analyze(pixels, 65535)
+    assert not any("border is not dark" in w for w in m["warnings"])

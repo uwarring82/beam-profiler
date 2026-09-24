@@ -2,6 +2,13 @@
 
 Consequential changes and how they were validated. Newest first.
 
+## 2026-09-24 · 0.3.2 · First real beam frame: non-dark border detection
+
+The first real beam frame was a 650 nm laser pointer through single-mode fibre (no collimator), ND 3.0, Firefly at 30 ms and 5 dB, frozen at 07:51:32 UTC. The diverging beam is larger than the 5.0 × 3.7 mm sensor, and 6.3% of pixels are saturated. The border median (7680 DN) and the border spread (5376 DN) were beam wings, not background and noise. Subtracting them and thresholding at 3 σ left only the core: D4σ 2.66 × 2.74 mm, against 4.1 × 3.6 mm with no threshold or border subtraction, which is itself only a lower bound. Only saturation was flagged.
+
+- Added a border-darkness test: a border spread above 4× the neighbour-difference noise marks structured light. It gives 12× on this frame and 1.0–2.4 for simulator, Gaussian and black-clipped quantized noise.
+- Validation: 72 tests; the warning fires on the recorded frame.
+
 ## 2026-09-24 · 0.3.1 · Fixes found by a simulator dashboard tour
 
 A scripted tour drove the dashboard through its states with the simulator: offline, warm-up, live, saturated, empty ROI, truncating ROI, dark reference, frozen, recording, replay, PNG. It found two measurement-integrity gaps:

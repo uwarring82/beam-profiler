@@ -50,6 +50,15 @@ def analyze(pixels, maximum, *, pixel_pitch_um=None, magnification=1., roi=None,
                "centroid_x_px": None, "centroid_y_px": None,
                "diameter_x": None, "diameter_y": None, "major": None, "minor": None,
                "angle_deg": None, "ellipticity": None}
+    # Sensor noise varies pixel to pixel; beam wings, stray light and fringes vary
+    # smoothly along the border. A spread far above the neighbour-difference noise
+    # means the border is not dark, so the background and threshold remove beam signal.
+    sides = (values[0], values[-1], values[:, 0], values[:, -1])
+    white = float(np.std(np.concatenate([np.diff(side) for side in sides]))) / np.sqrt(2)
+    if noise > 4 * white:
+        warnings.append("ROI border is not dark (beam wings, stray light or fringes): background "
+                        "subtraction and threshold remove beam signal, so widths are underestimated. "
+                        "Fit the whole beam inside the ROI with a dark margin.")
     if valid:
         xs, ys = np.arange(x0, x1), np.arange(y0, y1)
         cx, cy = float(px @ xs / total), float(py @ ys / total)
