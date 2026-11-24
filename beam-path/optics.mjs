@@ -40,6 +40,14 @@ export function checkFocus(f) {
     throw Error('Enter a signed focal length with magnitude 0.1–100000 mm.');
 }
 
+// 1/e² radii of the camera-x and camera-y marginals of an elliptical Gaussian
+// with principal radii wu, wv and u axis at angle degrees from +x toward +y.
+export function cameraRadii(wu, wv, angle = 0) {
+  const c = Math.cos(angle*Math.PI/180), s = Math.sin(angle*Math.PI/180);
+  return {x: Math.sqrt(wu*wu*c*c + wv*wv*s*s), y: Math.sqrt(wu*wu*s*s + wv*wv*c*c),
+    tilt: Math.abs(((angle % 90) + 135) % 90 - 45)};
+}
+
 export function waistQ(w, wavelength, distance = 0) {
   return {re: distance, im: Math.PI * w * w / wavelength};
 }

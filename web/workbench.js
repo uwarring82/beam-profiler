@@ -178,8 +178,10 @@ function renderFit() {
   const tiedGaussian=gaussian && flat && flat.order<1.01 && Math.abs(flat.rmse_dn-gaussian.rmse_dn)<=.001*gaussian.rmse_dn;
   const useWaist=packet.metrics.unit==='µm' && (best===gaussian || (best===flat && tiedGaussian));
   $('launch-path').hidden=!useWaist;
+  // Pass the principal radii and u-axis angle; the simulator projects them
+  // onto camera x/y, which it assigns to the tangential/sagittal planes.
   if(useWaist) $('launch-path').href='./beam-path/?'+new URLSearchParams({
-    wt:gaussian.radius_u_px*scale, ws:gaussian.radius_v_px*scale
+    wu:gaussian.radius_u_px*scale, wv:gaussian.radius_v_px*scale, angle:gaussian.angle_deg ?? 0
   });
   if(tiedGaussian)
     notes.push('Gaussian and super-Gaussian RMS agree within 0.1% at order ≈ 1.');

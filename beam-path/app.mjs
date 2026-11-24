@@ -1,4 +1,4 @@
-import {axes, lensOrder, maxLenses, overlap, propagate, sourceQ, spot, targetMode, validatePath} from './optics.mjs';
+import {axes, cameraRadii, lensOrder, maxLenses, overlap, propagate, sourceQ, spot, targetMode, validatePath} from './optics.mjs';
 import {showcase, showcases} from './showcases.mjs';
 import {draw, positionAt} from './plot.mjs';
 
@@ -36,14 +36,28 @@ function addWaistFields(parent, pair) {
   }
 }
 function importFit(){
-  if (!params.has('wt') && !params.has('ws')) return;
-  const values=['wt','ws'].map(key=>Number(params.get(key)));
+  // wu/wv/angle: Gaussian fit principal radii (µm) and u-axis angle (degrees,
+  // camera +x toward +y). wt/ws: older links that carried T/S radii directly.
+  const fitted=params.has('wu')||params.has('wv'), legacy=params.has('wt')||params.has('ws');
+  if (!fitted && !legacy) return;
+  const keys=fitted?['wu','wv']:['wt','ws'];
+  const values=keys.map(key=>Number(params.get(key)));
+  const angle=fitted && params.has('angle')?Number(params.get('angle')):0;
   $('import-note').hidden=false;
-  if (!values.every(v=>Number.isFinite(v)&&v>=.1&&v<=100000)) {
+  if (!values.every(v=>Number.isFinite(v)&&v>=.1&&v<=100000) || !Number.isFinite(angle)) {
     $('import-note').textContent='The fit radii are outside the supported range. The showcase launch is loaded.';return;
   }
-  axes.forEach((a,i)=>{path.source[a].w=values[i];});
-  $('import-note').textContent='Gaussian fit imported as a waist at the rail origin, with fitted u/v assigned to T/S. A single image gives no wavefront curvature. Confirm the waist locations, axis alignment and pump wavelength.';
+  const common=' A single image gives no wavefront curvature. Confirm the waist locations and pump wavelength.';
+  if (!fitted) {
+    axes.forEach((a,i)=>{path.source[a].w=values[i];});
+    $('import-note').textContent='Gaussian fit imported as a waist at the rail origin, with its radii assigned to T/S.'+common;
+    return;
+  }
+  const r=cameraRadii(values[0],values[1],angle);
+  path.source.t.w=Number(r.x.toFixed(3));path.source.s.w=Number(r.y.toFixed(3));
+  const elliptical=Math.abs(values[0]-values[1])>=.01*Math.max(...values);
+  $('import-note').textContent='Gaussian fit imported as a waist at the rail origin. T and S take the 1/e² radii along camera x and y, so camera x must lie in the cavity plane.'+
+    (elliptical && r.tilt>5?' The fitted beam axes are '+fmt(r.tilt,1)+'° from the camera axes. The simulator treats T and S as the beam axes, which is approximate for a tilted elliptical beam.':'')+common;
 }
 // Copy only known fields of a versioned design from an untrusted link.
 function readShape(shape, input) {
@@ -106,7 +120,7 @@ function renderLenses() {
 }
 function resetSearch(){
   worker?.terminate();worker=null;proposal=null;$('proposal').hidden=true;
-  $('apply-layout').hidden=true;$('moves').textContent='';
+  $('apply-layout').hidden=true;$('moves').textContent='';$('limits').hidden=true;
 }
 function edited(){
   resetSearch();$('share-status').hidden=true;analyze();
@@ -183,6 +197,12 @@ $('search').onclick=()=>{
       if(proposal.after<=proposal.before+1e-12){searchMessage('No improvement found for this layout.');return;}
       searchMessage('Proposed spatial overlap   '+percent(proposal.before)+' → '+percent(proposal.after));
       $('moves').textContent=proposal.lenses.map((l,i)=>'L'+(i+1)+' at '+fmt(l.z,3)+' mm (f = '+fmt(l.f,3)+' mm)').join(' · ');
+      const where={start:'the start of the rail',coupler:'the input coupler',lens:'a neighbouring lens'};
+      if(proposal.limits.length){
+        $('limits').textContent=proposal.limits.map(l=>'L'+(l.lens+1)+' sits at the minimum clearance from '+where[l.side]).join('. ')+
+          '. The best overlap may lie beyond this constraint: try a longer rail, a smaller clearance or other focal lengths.';
+        $('limits').hidden=false;
+      }
       $('apply-layout').hidden=false;
     };
     job.onerror=()=>{if(worker===job){finish();searchMessage('Could not run the layout search. Reload the page and retry.');}};

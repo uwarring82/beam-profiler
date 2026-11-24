@@ -88,5 +88,12 @@ export function optimize(p, gap, catalog = []) {
   const rounded=best.ls.map(l=>({...l,z:l.locked?l.z:Math.round(l.z*1000)/1000}));
   if (rounded.every((l,i)=> l.z>=low(rounded,i)-1e-9 && l.z<=high(rounded,i)+1e-9) && score(rounded)>=before)
     best={ls:rounded,eta:score(rounded)};
-  return {before,after:best.eta,lenses:best.ls.sort((a,b)=>a.index-b.index).map(({index,...l})=>l)};
+  // A free lens left at a clearance boundary means the optimum may lie beyond it.
+  const limits=[];
+  for (const i of free) {
+    const l=best.ls[i];
+    if (l.z-low(best.ls,i)<1e-3) limits.push({lens:l.index, side:i?'lens':'start'});
+    else if (high(best.ls,i)-l.z<1e-3) limits.push({lens:l.index, side:i+1<best.ls.length?'lens':'coupler'});
+  }
+  return {before,after:best.eta,limits,lenses:best.ls.sort((a,b)=>a.index-b.index).map(({index,...l})=>l)};
 }
