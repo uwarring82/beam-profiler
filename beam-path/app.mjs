@@ -1,14 +1,17 @@
 import {axes, lensOrder, maxLenses, overlap, propagate, sourceQ, spot, targetMode, validatePath} from './optics.mjs';
-import {showcase, showcases} from './showcases.mjs';
+import {showcases} from './showcases.mjs';
+import {fitProjection, openLayout, shareLayout} from './layout.mjs';
+import {renderSearchResult} from './search-result.mjs';
 import {draw, positionAt} from './plot.mjs';
 
 const $ = id => document.getElementById(id);
 const fmt = (number, digits=2) => Number(number.toFixed(digits)).toLocaleString('en-US', {maximumFractionDigits:digits});
 const percent = n => (100*n).toFixed(2)+'%';
-const params = new URLSearchParams(location.search);
-const stage = params.get('stage')==='bbo'?'bbo':'lbo';
+const {stage, path, gap, fit, notice} = openLayout(new URL(location.href));
 const ref = showcases[stage];
-let path = showcase(stage);
+const projected = fit && fitProjection(fit);
+const approximate = projected?.fitOverlap < 0.99;
+$('gap').value = gap;
 let beamValid=false, target, worker, proposal, dragging=null;
 const fieldInputs = new Map();
 
@@ -35,43 +38,32 @@ function addWaistFields(parent, pair) {
     numeric(parent,name+' waist position (mm)',pair[axis],'z');
   }
 }
-function importFit(){
-  if (!params.has('wt') && !params.has('ws')) return;
-  const values=['wt','ws'].map(key=>Number(params.get(key)));
-  $('import-note').hidden=false;
-  if (!values.every(v=>Number.isFinite(v)&&v>=.1&&v<=100000)) {
-    $('import-note').textContent='The fit radii are outside the supported range. The showcase launch is loaded.';return;
+function showImportNote() {
+  const note = $('import-note');
+  if (!fit) {
+    note.hidden = !notice;
+    note.textContent = notice;
+    return;
   }
-  axes.forEach((a,i)=>{path.source[a].w=values[i];});
-  $('import-note').textContent='Gaussian fit imported as a waist at the rail origin, with fitted u/v assigned to T/S. A single image gives no wavefront curvature. Confirm the waist locations, axis alignment and pump wavelength.';
+  const parts = [];
+  if (projected.fitOverlap === undefined) {
+    parts.push('Legacy Gaussian fit imported with T/S radii. The original orientation is unknown.');
+  } else {
+    parts.push('The imported Gaussian fit uses camera x/y marginal radii for T/S. Align camera x with the cavity plane.');
+    parts.push('At the assumed waist, the fitted field and its separable approximation have '+percent(projected.fitOverlap)+' power overlap.');
+    if (approximate) parts.push('The model discards x–y correlation. Coupler predictions use the separable input.');
+  }
+  const source = path.source;
+  if (Math.abs(source.t.w-projected.x) > 1e-7*projected.x || Math.abs(source.s.w-projected.y) > 1e-7*projected.y || source.t.z !== 0 || source.s.z !== 0) {
+    parts.push('The current waist settings differ from the original import.');
+  }
+  parts.push('A single image gives no wavefront curvature. Confirm the waist locations and pump wavelength.');
+  note.textContent = parts.join(' ');
+  note.hidden = false;
 }
-// Copy only known fields of a versioned design from an untrusted link.
-function readShape(shape, input) {
-  if (Array.isArray(shape)) {
-    if (!Array.isArray(input) || input.length>maxLenses) throw Error();
-    return input.map(item=>readShape(shape[0],item));
-  }
-  if (typeof shape==='object') {
-    if (!input || typeof input!=='object') throw Error();
-    return Object.fromEntries(Object.entries(shape).map(([k,v])=>[k,readShape(v,input[k])]));
-  }
-  if (typeof input!==typeof shape || (typeof input==='number' && !Number.isFinite(input))) throw Error();
-  return input;
-}
-if (location.hash.startsWith('#layout=')) {
-  try {
-    if (location.hash.length>20000) throw Error();
-    const data=JSON.parse(decodeURIComponent(location.hash.slice(8)));
-    if (data.v!==1) throw Error();
-    const incoming=readShape(path,data.path);
-    validatePath(incoming); targetMode(incoming); path=incoming;
-  } catch {
-    $('import-note').hidden=false;$('import-note').textContent='This layout link could not be read. The original showcase is loaded.';
-  }
-} else importFit();
 document.querySelector('[data-stage="'+stage+'"]').setAttribute('aria-current','true');
 $('reference').textContent='Published '+stage.toUpperCase()+' stage · '+ref.pump+' nm pump, '+ref.short+' mm between focusing mirrors, '+ref.total+' mm total cavity length and '+ref.fold+'° full fold. The paper gives a '+ref.designWaist+' µm design waist. Table 1 reports '+ref.inputPower.toFixed(2)+' W incident, '+ref.outputPower+' W output and '+ref.efficiency+'% doubling efficiency.';
-$('assumptions').textContent='Showcase assumptions · The input waist, injection lens focal lengths and placements, and distance from the coupler to the first curved mirror are illustrative. We interpret the tabulated cavity length as a geometric round trip and the crystal length along the central ray. The scalar pump index is set to '+ref.index.toFixed(2)+'. '+(stage==='bbo'?'The Brewster plane lies in the cavity plane. The model carries the 25 mm mirror focal length over from the first stage.':'The 25 mm focusing mirrors have a 50 mm radius of curvature.');
+$('assumptions').textContent='Showcase assumptions · The '+ref.rail+' mm external injection rail, input waist, injection lens focal lengths and placements, and distance from the coupler to the first curved mirror are illustrative. We interpret the tabulated cavity length as a geometric round trip and the crystal length along the central ray. The scalar pump index is set to '+ref.index.toFixed(2)+'. '+(stage==='bbo'?'The Brewster plane lies in the cavity plane. The model carries the 25 mm mirror focal length over from the first stage.':'The 25 mm focusing mirrors have a 50 mm radius of curvature.');
 numeric($('source'),'Pump wavelength (nm)',path,'wavelength');
 numeric($('source'),'Rail length (mm)',path,'length');
 addWaistFields($('source'),path.source);
@@ -106,7 +98,7 @@ function renderLenses() {
 }
 function resetSearch(){
   worker?.terminate();worker=null;proposal=null;$('proposal').hidden=true;
-  $('apply-layout').hidden=true;$('moves').textContent='';
+  $('apply-layout').hidden=true;$('moves').textContent='';$('limits').hidden=true;
 }
 function edited(){
   resetSearch();$('share-status').hidden=true;analyze();
@@ -129,6 +121,8 @@ function setModeValues(prefix, q) {
   });
 }
 function analyze(){
+  showImportNote();
+  $('overlap-label').textContent = approximate ? 'Spatial mode overlap · separable input model' : 'Spatial mode overlap';
   let error='', output;beamValid=false;target=null;
   try {
     validatePath(path);beamValid=true;
@@ -167,6 +161,10 @@ $('add').onclick=()=>{path.lenses.push({z:probeValue(),f:100,axis:'both',locked:
 $('dismiss').onclick=()=>{resetSearch();analyze();};
 $('switch-f').onchange=()=>{$('inventory').hidden=!$('switch-f').checked;edited();};
 $('gap').oninput=$('catalog').oninput=edited;
+const resultUI = {
+  panel: $('proposal'), apply: $('apply-layout'), status: $('search-status'),
+  limits: $('limits'), moves: $('moves')
+};
 function searchMessage(text){$('proposal').hidden=false;$('search-status').textContent=text;}
 $('search').onclick=()=>{
   resetSearch();
@@ -180,26 +178,22 @@ $('search').onclick=()=>{
       finish();
       if(data.error){searchMessage(data.error);return;}
       proposal=data.result;
-      if(proposal.after<=proposal.before+1e-12){searchMessage('No improvement found for this layout.');return;}
-      searchMessage('Proposed spatial overlap   '+percent(proposal.before)+' → '+percent(proposal.after));
-      $('moves').textContent=proposal.lenses.map((l,i)=>'L'+(i+1)+' at '+fmt(l.z,3)+' mm (f = '+fmt(l.f,3)+' mm)').join(' · ');
-      $('apply-layout').hidden=false;
+      renderSearchResult(proposal, resultUI);
     };
     job.onerror=()=>{if(worker===job){finish();searchMessage('Could not run the layout search. Reload the page and retry.');}};
     job.postMessage({path,gap:$('gap').valueAsNumber,catalog});
   } catch(e){resetSearch();analyze();searchMessage('The layout search could not start. '+e.message);}
 };
-$('apply-layout').onclick=()=>{if(proposal){path.lenses=proposal.lenses;renderLenses();edited();}};
+$('apply-layout').onclick=()=>{
+  if (!proposal) return;
+  const applied = proposal;
+  path.lenses = applied.lenses;
+  renderLenses();
+  edited();
+  renderSearchResult(applied, resultUI, true);
+};
 $('share').onclick=async()=>{
-  const link=new URL(location.href);
-  link.search=new URLSearchParams({stage}).toString();
-  const stored={...path};
-  // An unfinished edit in a hidden target form cannot affect this design.
-  const unused=path.targetType==='waists'?'ring':'target';
-  const defaults=showcase(stage);
-  try {readShape(defaults[unused],stored[unused]);}
-  catch {stored[unused]=defaults[unused];}
-  link.hash='layout='+encodeURIComponent(JSON.stringify({v:1,path:stored}));
+  const link = shareLayout(location.href, {stage, path, gap: $('gap').valueAsNumber, fit});
   const status=$('share-status');status.replaceChildren();status.hidden=false;
   try {await navigator.clipboard.writeText(link.href);status.textContent='Layout link copied.';}
   catch {
@@ -209,3 +203,7 @@ $('share').onclick=async()=>{
 };
 renderLenses();analyze();
 new ResizeObserver(updateProbe).observe($('plot'));
+// Opening a second shared design in this tab can be a fragment-only navigation.
+window.addEventListener('hashchange', ({oldURL, newURL}) => {
+  if ([oldURL, newURL].some(url => new URL(url).hash.startsWith('#layout='))) location.reload();
+});

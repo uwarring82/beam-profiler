@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {axisOverlap, drift, lensQ, lensOrder, overlap, propagate, ringMode, sourceQ, spot, targetMode, validatePath, waistQ} from '../beam-path/optics.mjs';
+import {axisOverlap, cameraRadii, drift, lensQ, lensOrder, overlap, propagate, ringMode, sourceQ, spot, targetMode, validatePath, waistQ} from '../beam-path/optics.mjs';
 import {showcase} from '../beam-path/showcases.mjs';
 import {optimize} from '../beam-path/optimize.mjs';
+import {fitProjection, openLayout, shareLayout} from '../beam-path/layout.mjs';
+import {renderSearchResult} from '../beam-path/search-result.mjs';
 
 function close(a,b,epsilon=1e-9){assert.ok(Math.abs(a-b)<epsilon, a+' != '+b);}
 function sameQ(a,b){close(a.re,b.re);close(a.im,b.im);}
@@ -98,4 +100,98 @@ test('An exact input match is kept and invalid inputs are rejected',()=>{
   assert.throws(()=>optimize(p,10,[0]),/focal length/);
   p.lenses=[];validatePath(p);assert.throws(()=>optimize(p,10),/add a lens/);
   assert.throws(()=>validatePath({...p,wavelength:NaN}),/wavelength/);
+});
+
+test('Showcase optima clear every constraint; a short BBO rail reports the coupler limit',()=>{
+  for(const [stage,rail] of [['lbo',600],['bbo',700]]){
+    const p=showcase(stage);close(p.length,rail);
+    const fit=optimize(p,10);
+    assert.deepEqual(fit.limits,[]);assert.ok(fit.after>.998,stage+' '+fit.after);
+  }
+  const short={...showcase('bbo'),length:600};
+  const fit=optimize(short,10);
+  assert.deepEqual(fit.limits,[{lens:1,side:'coupler'}]);
+  close(fit.lenses[1].z,590,1e-6);assert.ok(fit.after<.99);
+});
+test('Gaussian fit radii project onto camera axes for T/S',()=>{
+  let r=cameraRadii(300,200,0);close(r.x,300);close(r.y,200);close(r.tilt,0);
+  r=cameraRadii(300,200,90);close(r.x,200);close(r.y,300);close(r.tilt,0);
+  r=cameraRadii(300,200,-80);close(r.tilt,10);
+  r=cameraRadii(300,200,30);close(r.x,Math.sqrt(300**2*.75+200**2*.25));close(r.y,Math.sqrt(300**2*.25+200**2*.75));close(r.tilt,30);
+  r=cameraRadii(250,250,37);close(r.x,250);close(r.y,250);
+});
+
+test('Fit-to-separable overlap captures covariance even at four degrees',()=>{
+  const r=cameraRadii(400,40,4);
+  close(r.fitOverlap,0.8955588352155894); // Direct integration of the two normalized fields.
+  close(cameraRadii(400,40,-4).fitOverlap,r.fitOverlap);
+  close(cameraRadii(400,40,94).fitOverlap,r.fitOverlap);
+  for (const angle of [0,90,180]) close(cameraRadii(400,40,angle).fitOverlap,1);
+  close(cameraRadii(250,250,45).fitOverlap,1);
+  assert.ok(cameraRadii(250,249,45).fitOverlap>.9999);
+  const thin=cameraRadii(1e5,0.1,45);
+  assert.ok(thin.fitOverlap>0 && thin.fitOverlap<.00001);
+});
+
+test('Sharing a tilted fit retains the original projection, edited launch and clearance',()=>{
+  const url=new URL('https://example.org/beam-path/?stage=bbo&wu=400&wv=40&angle=4');
+  const layout=openLayout(url);
+  const original=fitProjection(layout.fit);
+  close(layout.path.source.t.w,original.x,1e-5);
+  close(layout.path.source.s.w,original.y,1e-5);
+  layout.path.source.t.w=475;layout.path.source.s.z=15;
+  layout.gap=24;
+  const copied=shareLayout(url,layout);
+  assert.deepEqual([...copied.searchParams.keys()],['stage']);
+  const restored=openLayout(copied);
+  assert.deepEqual(restored,layout);
+  close(fitProjection(restored.fit).fitOverlap,0.8955588352155894);
+});
+
+test('Legacy fit links and v1 layouts without provenance retain their original meaning',()=>{
+  const url=new URL('https://example.org/beam-path/?wt=228&ws=227');
+  const legacy=openLayout(url);
+  assert.deepEqual(fitProjection(legacy.fit),{x:228,y:227});
+  assert.deepEqual(openLayout(shareLayout(url,legacy)),legacy);
+  const path=showcase('lbo');path.length=800;
+  url.hash='layout='+encodeURIComponent(JSON.stringify({v:1,path}));
+  const old=openLayout(url);
+  assert.equal(old.fit,null);assert.deepEqual(old.path,path);assert.equal(old.gap,10);
+  url.hash='layout='+encodeURIComponent(JSON.stringify({v:1,path,fit:{wu:-10,wv:40,angle:4}}));
+  const invalid=openLayout(url);
+  assert.equal(invalid.fit,null);assert.deepEqual(invalid.path,path);assert.match(invalid.notice,/fit could not be read/);
+});
+
+test('Active coupler clearance survives applying, sharing and repeating a constrained search',()=>{
+  const url=new URL('https://example.org/?stage=bbo');
+  const layout=openLayout(url);layout.path.length=600;
+  const proposal=optimize(layout.path,layout.gap);
+  const ui={panel:{},apply:{},status:{},moves:{},limits:{}};
+  renderSearchResult(proposal,ui);
+  assert.equal(ui.apply.hidden,false);assert.equal(ui.limits.hidden,false);
+  assert.match(ui.limits.textContent,/L2.*input coupler/);
+  layout.path.lenses=proposal.lenses;
+  renderSearchResult(proposal,ui,true);
+  assert.equal(ui.apply.hidden,true);assert.equal(ui.limits.hidden,false);
+  const reopened=openLayout(shareLayout(url,layout));
+  const again=optimize(reopened.path,reopened.gap);
+  close(again.before,again.after);
+  renderSearchResult(again,ui);
+  assert.match(ui.status.textContent,/No improvement/);
+  assert.equal(ui.apply.hidden,true);assert.equal(ui.limits.hidden,false);
+  assert.match(ui.limits.textContent,/L2.*input coupler/);
+  renderSearchResult(optimize(showcase('bbo'),10),ui);
+  assert.equal(ui.limits.hidden,true);assert.equal(ui.limits.textContent,'');
+});
+
+test('Both sides of each free lens are reported on a fully packed rail',()=>{
+  const p=showcase('bbo');p.length=30;
+  p.lenses[0].z=20;p.lenses[1].z=10; // Display IDs are independent of propagation order.
+  const r=optimize(p,10);
+  assert.deepEqual(r.limits,[
+    {lens:1,side:'start'}, {lens:1,side:'lens',neighbor:0},
+    {lens:0,side:'lens',neighbor:1}, {lens:0,side:'coupler'}
+  ]);
+  p.lenses[1].locked=true;
+  assert.deepEqual(optimize(p,10).limits,r.limits.slice(2));
 });
