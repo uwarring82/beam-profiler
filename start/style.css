@@ -1,0 +1,72 @@
+.entrance .top-inner,
+.entrance main,
+.page-foot {
+  width: min(44rem, calc(100% - 2.5rem));
+  margin-inline: auto;
+}
+
+.page-foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.entrance main { line-height: 1.55; }
+.opening { padding-block: clamp(2.5rem, 6vw, 5rem) 2.5rem; }
+.opening h1 { max-width: 18ch; text-wrap: balance; }
+.purpose {
+  max-width: 52ch;
+  margin-top: 1.25rem;
+  font-size: clamp(1.08rem, 2vw, 1.25rem);
+}
+.quantity { white-space: nowrap; }
+.prompt { margin: 1.75rem 0 .75rem; font-weight: 600; }
+.choice { display: grid; justify-items: start; }
+.entrance .button {
+  min-height: 48px;
+  padding-inline: 1.5rem;
+  text-decoration: none;
+  font-size: 1rem;
+}
+.secondary,
+.model-note,
+.page-foot { color: var(--muted); }
+.secondary { display: inline-flex; align-items: center; min-height: 44px; font-size: .94rem; }
+.model-note { margin-top: 1.25rem; max-width: 62ch; font-size: .94rem; }
+.model-note p + p { margin-top: .4rem; font-size: .875rem; }
+
+.term,
+.model-note a { position: relative; display: inline-block; }
+.term { text-decoration: underline dotted; text-decoration-color: var(--muted); }
+.term::after,
+.model-note a::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
+
+.section { padding-block: 1.75rem; border-top: 1px solid var(--line); }
+.section h2 { font-size: 1.4rem; margin-bottom: .75rem; }
+.section p { max-width: 65ch; margin-bottom: .75rem; }
+.link-list { padding: 0; margin: 0; list-style: none; }
+.link-list li + li { border-top: 1px solid var(--line); }
+.link-list a,
+.entrance summary { padding: .7rem 0; min-height: 44px; }
+.link-list a { display: block; color: var(--green); }
+.entrance summary { display: list-item; font-weight: 600; }
+.entrance details { border-top: 1px solid var(--line); }
+.entrance details p,
+.entrance details ul { margin-inline-start: 1.15rem; }
+.terms dt { font-size: 1rem; color: inherit; font-weight: 650; }
+.terms dd { text-align: left; font-size: 1rem; max-width: 64ch; margin: .2rem 0 1rem; }
+.entrance :target { scroll-margin-block-start: 1rem; }
+.page-foot { border-top: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; gap: 0 2rem; }
+@media (max-width: 640px) {
+  .opening { padding-block: 2.25rem 1.75rem; }
+  .opening h1 { font-size: 2.4rem; }
+  .choice .button { justify-self: stretch; }
+  .prompt { margin-top: 1.4rem; }
+}

@@ -7,6 +7,28 @@ export function positionAt(canvas, event, length) {
   return Math.max(0, Math.min(1, u))*length;
 }
 
+// A finger can grab the small painted marker anywhere in a 44px square.
+export function lensMarkerAt(canvas, event, path) {
+  const box = canvas.getBoundingClientRect();
+  const touch = event.pointerType === 'touch';
+  const y = event.clientY - box.top;
+  if (y < 0 || y > (touch ? 44 : 31)) return null;
+
+  const x = event.clientX - box.left;
+  const scale = (box.width - left - right) / path.length;
+  let hit = null;
+  let distance = touch ? 22 : 14;
+  for (const lens of path.lenses) {
+    const delta = Math.abs(x - (left + lens.z * scale));
+    // At the same position, the last marker is drawn on top.
+    if (delta <= distance) {
+      hit = lens;
+      distance = delta;
+    }
+  }
+  return hit;
+}
+
 export function draw(canvas, path, target, probe) {
   const {width, height} = canvas.getBoundingClientRect();
   const ratio = Math.min(devicePixelRatio || 1, 2);

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Match a laser beam to a cavity, then choose a route for your own beam measurement or design.">
+  <title>Start here · Beam Lab</title>
+  <link rel="stylesheet" href="../web/workbench.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="entrance">
+  <header class="top">
+    <div class="top-inner">
+      <a class="brand" href="../"><span class="mark" aria-hidden="true"></span>Beam Lab</a>
+      <nav aria-label="Main navigation"><a href="./" class="current" aria-current="page">Start here</a></nav>
+    </div>
+  </header>
+  <main>
+    <section class="opening" aria-labelledby="problem">
+      <h1 id="problem">Match the beam to the first cavity</h1>
+      <p class="purpose">You need <span class="quantity">279.5 nm</span> light for <a class="term" href="#magnesium">²⁵Mg⁺</a>, and the better your <span class="quantity">1118 nm</span> beam fits the first <a class="term" href="#doubling">doubling cavity</a>, the more green light can reach the second.</p>
+      <p class="prompt">Drag a lens and watch the <a class="term" href="#overlap">spatial overlap</a> change.</p>
+      <div class="choice">
+        <a class="button primary" href="../beam-path/?stage=lbo#plot">Move a lens</a>
+        <a class="secondary" href="#routes">Different task? Choose your route ↓</a>
+      </div>
+      <div class="model-note">
+        <p>Overlap tells you how well the beam fits the cavity. You measure the green output in the lab. Keep the layout link and one sentence about what changed.</p>
+        <p>First cavity model from <a href="https://doi.org/10.1007/s00340-006-2274-2">Friedenauer et al. (2006)</a>, under review.</p>
+      </div>
+    </section>
+
+    <section class="section" id="routes" aria-labelledby="routes-title">
+      <h2 id="routes-title">What are you here to do?</h2>
+      <ul class="link-list">
+        <li><a href="layer-0.html">Understand Gaussian beams first</a></li>
+        <li><a href="layer-1.html">Couple a beam into a cavity or fibre</a></li>
+        <li><a href="layer-1.html#focus">Focus a beam onto a target</a></li>
+        <li><a href="layer-2.html">Characterise a laser beam</a></li>
+        <li><a href="layer-4.html">The tools cannot do what I need</a></li>
+      </ul>
+    </section>
+
+    <section class="section" aria-labelledby="check-title">
+      <h2 id="check-title">How will you check your layout?</h2>
+      <p>Measure your input beam. Design a layout, build it, then check the measured beam radius against your prediction.</p>
+      <p>If the difference is larger than the scatter in your measurements, measure the input again. If they agree, keep the layout link and record why you chose it.</p>
+      <details>
+        <summary>What can you learn from one image?</summary>
+        <p>You can measure the beam width at the camera. To find where the beam is narrowest, move the camera and measure at several positions.</p>
+      </details>
+      <details>
+        <summary>Layer guide</summary>
+        <ul class="link-list">
+          <li><a href="layer-0.html">Orient · Define your task</a></li>
+          <li><a href="layer-1.html">Explore · Try a lens position</a></li>
+          <li><a href="layer-2.html">Measure · Record your input beam</a></li>
+          <li><a href="layer-3.html">Design · Check your layout</a></li>
+          <li><a href="layer-4.html">Extend · Document a missing capability</a></li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="section" aria-labelledby="glossary">
+      <h2 id="glossary">Glossary</h2>
+      <dl class="terms">
+        <dt id="magnesium">²⁵Mg⁺</dt>
+        <dd>A magnesium-25 atom with one electron removed. The ultraviolet light is for these ions.</dd>
+        <dt id="doubling">Doubling cavity</dt>
+        <dd>Mirrors circulate light through a crystal. The crystal converts some of the light to twice its frequency, or half its wavelength.</dd>
+        <dt id="overlap">Spatial overlap</dt>
+        <dd>The fraction of incident power that matches the shape and wavefront of the light the cavity supports, assuming perfect alignment.</dd>
+        <dt id="gaussian">Gaussian beam</dt>
+        <dd>A beam whose intensity falls away from its centre in a bell shape. Its narrowest cross section is called the waist.</dd>
+      </dl>
+    </section>
+  </main>
+  <footer class="page-foot"><a href="https://github.com/uwarring82/beam-profiler#measurement-conventions">Measurement methods</a><a href="https://github.com/uwarring82/beam-profiler/issues">Help with Beam Lab</a></footer>
+</body>
+</html>

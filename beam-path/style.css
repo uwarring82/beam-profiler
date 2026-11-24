@@ -8,8 +8,11 @@
 .configuration{display:grid;grid-template-columns:1fr 1fr;gap:14px}.configuration .fit-block{margin:0}.hint,.target-select{margin:8px 0 12px}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.fields label,.lens label,.search-options label,.target-select{display:flex;flex-direction:column;gap:5px;font-size:.82rem;color:#3e5462}
 .fields input,.lens input[type=number],.search-options input:not([type=checkbox]),.fields select,.lens select,.target-select select{width:100%;min-width:0;border-radius:6px;border:1px solid #bdcbd2;padding:8px;color:#172736;background-color:#fff;font-size:.92rem;font-weight:500}.lens select,.fields select,.target-select select{padding-right:25px}
 .lens{display:grid;grid-template-columns:35px 1fr 1fr 1.4fr auto auto;gap:13px;align-items:end;margin-top:14px;border-top:1px solid #e0e7eb;padding-top:12px}.lens>strong{align-self:center;color:#276956}.lens .check,.search-options .check{flex-direction:row;align-items:center;align-self:center}.search-options{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:15px}.search-options input{max-width:210px}.proposal{margin-top:15px;padding:12px 14px;border-radius:7px;background:#edf4f1;font-size:.91rem}.proposal .button{margin:8px 6px 0 0}.proposal #moves{color:var(--muted);line-height:1.5}
-.settings p{font-size:.9rem;line-height:1.55;margin:10px 0;color:var(--muted)}.top nav .current{display:inline}
+.settings p{font-size:.9rem;line-height:1.55;margin:10px 0;color:var(--muted)}
 @media(max-width:780px){.configuration{grid-template-columns:1fr}.lens{grid-template-columns:28px 1fr 1fr;gap:8px}.lens select{min-width:110px}.lens label:has(select){grid-column:2}.lens .button{grid-column:3;grid-row:3}.top nav{gap:13px}}
 @media(max-width:460px){.preset{padding:8px;gap:7px}.spectrum{width:29px;height:30px}.showcase .section-title{align-items:baseline}.legend{gap:5px}.legend span:before{width:8px}.view-heading{padding:12px}.lens .button{font-size:.78rem;padding:7px}.probe{gap:6px}.probe span{width:100%}}
 #share-status{font-size:.9rem;margin:-10px 0 18px;color:#23664f}#share-status input{display:block;width:100%;margin:5px 0;padding:7px}
 .legend .goal:before{width:6px;height:6px;border:1px solid #9ec9b8;border-radius:50%;background:#9ec9b8}.probe input{min-width:62px}
+
+/* The entrance links to the plot. Keep its instructions in view on arrival. */
+#plot { scroll-margin-block-start: 6.5rem; }

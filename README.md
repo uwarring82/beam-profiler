@@ -2,7 +2,7 @@
 
 **[Open the browser profiler](https://uwarring82.github.io/beam-profiler/)** to explore five calibrated samples, open a monochrome PNG/TIFF or reopen a Beam Lab snapshot. Images and fits are processed on your device. Camera acquisition and recording use the [local application](#run).
 
-[Beam path simulator](https://uwarring82.github.io/beam-profiler/beam-path/) · [Intensity fits](#transverse-intensity-fits) · [Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Entrance work programme](docs/work-programme-entrance.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
+[Start here](https://uwarring82.github.io/beam-profiler/start/) · [Beam path simulator](https://uwarring82.github.io/beam-profiler/beam-path/) · [Intensity fits](#transverse-intensity-fits) · [Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Entrance work programme](docs/work-programme-entrance.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
 
 [![Tests](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml/badge.svg)](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml)
 
@@ -10,9 +10,9 @@ A local laser beam profiler with a browser UI and Python camera acquisition. Bui
 
 ## Beam path simulator
 
-Open a published SHG stage, move a lens by its marker or its numerical position, and inspect the two transverse radii with the probe. The coupler readout compares the incoming and target radii and reciprocal wavefront curvatures. **Optimize layout** previews a new set of lens positions. You can lock mounts, specify clearance from neighbors and rail ends, and supply alternative signed focal lengths. The multistart search retains lens order and can reach a local optimum. The result names each active clearance at a free lens, including both sides when relevant. The limits remain visible after applying a layout or repeating a search that finds no improvement. **Copy layout link** includes the optical configuration, minimum clearance and original profiler fit when available.
+Open either doubling stage. Move a lens by its marker or its numerical position, and inspect the two transverse radii with the probe. The coupler readout compares the incoming and target radii and reciprocal wavefront curvatures. **Optimize layout** previews a new set of lens positions. You can lock mounts, specify clearance from neighbors and rail ends, and supply alternative signed focal lengths. The multistart search retains lens order and can reach a local optimum. The result names each active clearance at a free lens, including both sides when relevant. The limits remain visible after applying a layout or repeating a search that finds no improvement. **Copy layout link** includes the optical configuration, minimum clearance and original profiler fit when available.
 
-| Showcase | Pump → harmonic | Crystal | Curved-mirror separation | Round trip | Full fold | Paper's design waist |
+| Showcase from Friedenauer et al. (2006), under review | Pump → harmonic | Crystal | Curved-mirror separation | Round trip | Full fold | Paper's design waist |
 | --- | --- | --- | --- | --- | --- | --- |
 | [First stage, LBO](https://uwarring82.github.io/beam-profiler/beam-path/?stage=lbo) | 1118 → 559 nm | 18 mm, normal incidence | 62 mm | 400 mm | 10° | 27.3 µm |
 | [Second stage, BBO](https://uwarring82.github.io/beam-profiler/beam-path/?stage=bbo) | 559 → 279.5 nm | 10 mm, Brewster cut | 59.4 mm | 470 mm | 27.4° | 19.4 µm |
