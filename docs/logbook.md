@@ -2,6 +2,11 @@
 
 Consequential changes and how they were validated. Newest first.
 
+## 2026-11-24 · Work programme for a student entrance page
+
+- Added [docs/work-programme-entrance.md](work-programme-entrance.md): a layered "Start here" page for students with beam tasks, built as a loop rather than a ladder, with an installation track for macOS, Linux and Windows. Clean, focused design is its first requirement; the goal is students who do the job properly.
+- Camera access is verified on macOS only. Linux and Windows cards wait for a validation session on the lab computers.
+
 ## 2026-11-24 · 0.5.0 · Transverse intensity fits and encircled energy
 
 - Added frozen-frame fits for Gaussian, super-Gaussian, HG₁₀, HG₁₁ and circular LG ring intensities. Comparison uses full-ROI RMS. The dashboard and inspection sheet show the signed residual, and the ZIP contains the native float32 residual and fitted parameters.
