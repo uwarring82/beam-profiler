@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c1522">
+  <meta name="description" content="Measure a laser beam in your browser. Explore calibrated examples or analyze a monochrome camera frame and fit transverse intensity modes locally.">
+  <title>Beam Lab · Optical beam profiler</title><link rel="stylesheet" href="./web/workbench.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+  <a class="brand" href="./" aria-label="Beam Lab home"><span class="mark" aria-hidden="true"></span>Beam Lab</a>
+  <nav aria-label="Main navigation"><a href="#workspace" class="current">Workspace</a><a href="https://github.com/uwarring82/beam-profiler#measurement-conventions">Methods</a><a href="https://github.com/uwarring82/beam-profiler#run">Camera setup</a></nav>
+</div></header>
+<main id="workspace">
+  <div class="intro"><div><h1>Beam profiler</h1><p>Explore a sample or measure your own camera frame.</p></div>
+    <div class="actions"><button id="export" class="button quiet" disabled>Export JSON</button><label class="button primary" for="upload">Open frame</label><input id="upload" type="file" accept=".tif,.tiff,.png,.zip" class="visually-hidden"></div>
+  </div>
+  <section aria-labelledby="samples-title" class="library"><h2 id="samples-title">Sample beams</h2><div id="samples" class="sample-grid"></div></section>
+  <div class="instrument">
+    <section class="viewer" aria-label="Beam image">
+      <header class="view-heading"><div><span id="source-kind">Simulated frame</span><h2 id="source-name">Laguerre–Gaussian</h2></div><span id="geometry" class="mono">384 × 256 px</span></header>
+      <div class="view-tools"><div class="tabs" role="group" aria-label="Image view"><button aria-pressed="true" id="intensity">Intensity</button><button aria-pressed="false" id="residual" disabled>Residual</button></div><label class="cross"><input type="checkbox" id="cross" checked> Crosshair</label></div>
+      <div class="stage" id="stage"><canvas id="frame" aria-label="Beam intensity in sensor coordinates. Use Select ROI to drag a rectangular measurement region."></canvas></div>
+      <div class="view-footer"><div class="key"><span id="low">0</span><i id="ramp"></i><span id="high">4095 DN</span></div><span id="roi-caption">Full frame</span></div>
+    </section>
+    <section class="results" aria-labelledby="measurement-title">
+      <div class="section-title"><h2 id="measurement-title">Measurement</h2><span class="pill" id="unit">µm</span></div>
+      <div class="metrics"><div><span>D4σ horizontal</span><strong id="dx">—</strong></div><div><span>D4σ vertical</span><strong id="dy">—</strong></div></div>
+      <dl id="details"><div><dt>Centroid x / y</dt><dd id="center">—</dd></div><div><dt>Ellipticity</dt><dd id="ellip">—</dd></div><div><dt>D50 / D86.5</dt><dd id="energy">—</dd></div><div><dt>Peak intensity</dt><dd id="peak">—</dd></div></dl>
+      <div class="profile-title"><h3>Integrated profiles</h3><span><b class="x-ink">X</b> / <b class="y-ink">Y</b></span></div>
+      <canvas id="profiles" aria-label="Normalized horizontal and vertical intensity profiles, each across its ROI span"></canvas>
+    </section>
+  </div>
+  <div id="notice" class="notice" hidden role="status"></div>
+  <div id="progress" class="progress" role="status" aria-live="polite" hidden><span id="progress-text"></span><button id="cancel" hidden>Cancel</button></div>
+  <section class="fit-block">
+    <div class="section-title"><div><h2>Intensity fit</h2><p>Compare how well transverse intensity models describe this frame.</p></div>
+    <div class="fit-controls"><select id="model" aria-label="Intensity model"><option value="compare">Compare all models</option></select><button id="fit" class="button dark" disabled>Run fit</button></div></div>
+    <div id="fit-output" hidden><h3 id="fit-name"></h3><p id="fit-info"></p><p id="fit-note"></p><div class="scroll"><table><thead><tr><th>Model</th><th>RMS residual (DN)</th><th>R²</th></tr></thead><tbody id="fit-rows"></tbody></table></div><button id="save-residual" class="button quiet">Download residual TIFF</button></div>
+  </section>
+  <details class="settings"><summary>ROI &amp; analysis settings</summary>
+    <form id="settings"><label>Effective scale (µm/px)<input type="number" id="scale" step="any" min="0.000001" placeholder="Pixel units"></label>
+    <label>Sensor full scale (DN)<input type="number" min="1" max="65535" step="1" id="maximum" required></label>
+    <label>Noise threshold (σ)<input type="number" id="threshold" min="0" max="10" step="any" required></label>
+    <label class="check"><input type="checkbox" id="border" checked> Subtract border median</label>
+    <button class="button quiet" id="apply">Apply settings</button></form>
+    <div class="roi-tools"><button class="button quiet" id="select-roi">Select ROI</button><button class="button quiet" id="reset-roi">Full frame</button><span id="roi-help">Drag on the intensity image to select a region with a dark margin.</span></div>
+  </details>
+  <footer><p>Images stay in this browser. Open a single monochrome 8/16-bit PNG, TIFF or Beam Lab snapshot ZIP (up to 4 MP). Set the sensor full scale for 10/12-bit data stored in 16 bits.</p><a href="https://github.com/uwarring82/beam-profiler">Source &amp; documentation</a></footer>
+</main>
+<script src="./web/workbench.js" defer></script></body></html>
