@@ -2,6 +2,11 @@
 
 Consequential changes and how they were validated. Newest first.
 
+## 2026-11-24 · Fibre launch showcase
+
+- Added a fibre-launch showcase: the fibre mode and the output coupler alone match the LBO cavity, with focus offset and distance to the input coupler as the two settings. The search reports the 1% focus and distance tolerances and the clear-aperture transmission.
+- Validated against a brute-force grid over both settings, exact waist-to-waist imaging onto a round target, the Gaussian aperture integral and a deliberately short focus travel that reports its limits. With the illustrative 6.6 µm mode field diameter and 11 mm coupler, the overlap rises from 10.91% (collimated, 600 mm) to 99.92% at +175.8 µm and 735.4 mm. A ±6.1 µm focus error or a ±23.4 mm distance error costs 1%. Browser checks at 1280 px and 390 px; no console errors.
+
 ## 2026-11-24 · WP 1 · Student entrance
 
 - Added the [student entrance](../start/index.html) and five task routes. A touch-emulated lens drag at 390 px changed the overlap with the marker and readout in view.

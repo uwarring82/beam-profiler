@@ -40,7 +40,7 @@ function readShape(shape, input) {
 
 export function openLayout(url) {
   const params = url.searchParams;
-  const stage = params.get('stage') === 'bbo' ? 'bbo' : 'lbo';
+  const stage = ['bbo', 'fiber'].includes(params.get('stage')) ? params.get('stage') : 'lbo';
   const layout = {stage, path: showcase(stage), gap: 10, fit: null, notice: ''};
   if (url.hash.startsWith('#layout=')) {
     try {

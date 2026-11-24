@@ -15,7 +15,8 @@
 <div id="share-status" role="status" hidden></div>
 <section class="showcase" aria-label="SHG cavity showcases"><div class="section-title"><h2>SHG showcases</h2><a href="https://doi.org/10.1007/s00340-006-2274-2">From Friedenauer et al. (2006), under review</a></div>
 <div id="presets"><a class="preset" href="?stage=lbo" data-stage="lbo"><span class="spectrum ir" aria-hidden="true"></span><span><strong>LBO cavity</strong><small>1118 → 559 nm</small></span></a>
-<a class="preset" href="?stage=bbo" data-stage="bbo"><span class="spectrum uv" aria-hidden="true"></span><span><strong>BBO cavity</strong><small>559 → 279.5 nm</small></span></a></div></section>
+<a class="preset" href="?stage=bbo" data-stage="bbo"><span class="spectrum uv" aria-hidden="true"></span><span><strong>BBO cavity</strong><small>559 → 279.5 nm</small></span></a>
+<a class="preset" href="?stage=fiber" data-stage="fiber"><span class="spectrum ir" aria-hidden="true"></span><span><strong>Fibre launch</strong><small>Fibre coupler → LBO</small></span></a></div></section>
 <div id="import-note" class="notice" hidden></div>
 <div class="instrument">
 <section class="viewer" aria-label="Live beam path"><header class="view-heading"><div><span>Drag a lens marker</span><h2>Beam envelope</h2></div><div class="legend"><span class="t">Tangential</span><span class="s">Sagittal</span><span class="goal">Target at coupler</span></div></header>
@@ -31,6 +32,10 @@
 <tr><th>Target 1/R (m⁻¹)</th><td id="tct">—</td><td id="tcs">—</td></tr></tbody></table>
 <p id="ring-result" class="hint"></p></section></div>
 <p class="notice" id="invalid" role="status" hidden></p>
+<section class="fit-block" id="fiber-launch" hidden><div class="section-title"><div><h2>Fibre output coupler</h2><p>Only two settings match the fibre mode to the cavity: the focus offset and the distance to the input coupler.</p></div><button id="solve-launch" class="button dark">Find focus and distance</button></div>
+<div class="fields" id="fiber-fields"></div>
+<p id="launch-state" class="hint" role="status"></p>
+<p id="launch-result" class="hint" role="status" hidden></p></section>
 <section class="fit-block"><div class="section-title"><div><h2>Lens rail</h2><p>Drag a lens on the plot or set its position from the start of the rail.</p></div><button id="add" class="button quiet">Add lens at probe</button></div><div id="lenses"></div></section>
 <section class="fit-block"><div class="section-title"><div><h2>Optimize mode matching</h2><p>Search unlocked positions within the rail, preserving lens order and clearance.</p></div><button id="search" class="button dark">Optimize layout</button></div>
 <div class="search-options"><label>Minimum clearance (mm)<input id="gap" type="number" step="any" min="0" value="10"></label>

@@ -16,3 +16,7 @@
 
 /* The entrance links to the plot. Keep its instructions in view on arrival. */
 #plot { scroll-margin-block-start: 6.5rem; }
+
+/* Three showcases: one per row on a phone. */
+@media(max-width:560px){#presets{flex-direction:column}.preset{max-width:none}}
+#fiber-launch .section-title{margin-bottom:14px}

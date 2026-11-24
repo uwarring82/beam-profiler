@@ -3,17 +3,29 @@ import {showcases} from './showcases.mjs';
 import {fitProjection, openLayout, shareLayout} from './layout.mjs';
 import {renderSearchResult} from './search-result.mjs';
 import {draw, lensMarkerAt, positionAt} from './plot.mjs';
+import {applyLaunch, apertureTransmission, launchGeometry, solveLaunch} from './fiber.mjs';
 
 const $ = id => document.getElementById(id);
 const fmt = (number, digits=2) => Number(number.toFixed(digits)).toLocaleString('en-US', {maximumFractionDigits:digits});
 const percent = n => (100*n).toFixed(2)+'%';
 const {stage, path, gap, fit, notice} = openLayout(new URL(location.href));
-const ref = showcases[stage];
+const ref = showcases[stage], cavityRef = showcases[ref.cavity ?? stage];
 const projected = fit && fitProjection(fit);
 const approximate = projected?.fitOverlap < 0.99;
 $('gap').value = gap;
 let beamValid=false, target, worker, proposal, dragging=null;
 const fieldInputs = new Map();
+// Inputs that show a path value; refreshed when another control changes it.
+const bound = [];
+function refreshFields() {
+  for (let i = bound.length - 1; i >= 0; i--) {
+    const {field, get, digits = 6} = bound[i];
+    if (!field.isConnected) { bound.splice(i, 1); continue; }
+    if (document.activeElement === field) continue;
+    const value = get();
+    field.value = Number.isFinite(value) ? Number(value.toFixed(digits)) : '';
+  }
+}
 
 function labelFor(parent, text, input) {
   const label = document.createElement('label');
@@ -24,6 +36,15 @@ function numeric(parent, label, object, key) {
   field.type='number'; field.step='any'; field.value=object[key];
   field.oninput=()=>{object[key]=field.valueAsNumber; edited();};
   labelFor(parent,label,field);
+  bound.push({field, get: () => object[key]});
+  return field;
+}
+function derived(parent, label, get, set, digits=6) {
+  const field=document.createElement('input');
+  field.type='number'; field.step='any';
+  field.oninput=()=>{ if (Number.isFinite(field.valueAsNumber)) { set(field.valueAsNumber); renderLenses(); edited(); } };
+  labelFor(parent,label,field);
+  bound.push({field, get, digits});
   return field;
 }
 function selectField(parent, label, choices, current, change) {
@@ -62,8 +83,9 @@ function showImportNote() {
   note.hidden = false;
 }
 document.querySelector('[data-stage="'+stage+'"]').setAttribute('aria-current','true');
-$('reference').textContent='From Friedenauer et al. (2006), under review. '+stage.toUpperCase()+' stage · '+ref.pump+' nm pump, '+ref.short+' mm between focusing mirrors, '+ref.total+' mm total cavity length and '+ref.fold+'° full fold. The paper gives a '+ref.designWaist+' µm design waist. Table 1 reports '+ref.inputPower.toFixed(2)+' W incident, '+ref.outputPower+' W output and '+ref.efficiency+'% doubling efficiency.';
-$('assumptions').textContent='Showcase assumptions · The '+ref.rail+' mm external injection rail, input waist, injection lens focal lengths and placements, and distance from the coupler to the first curved mirror are illustrative. We interpret the tabulated cavity length as a geometric round trip and the crystal length along the central ray. The scalar pump index is set to '+ref.index.toFixed(2)+'. '+(stage==='bbo'?'The Brewster plane lies in the cavity plane. The model carries the 25 mm mirror focal length over from the first stage.':'The 25 mm focusing mirrors have a 50 mm radius of curvature.');
+$('reference').textContent='From Friedenauer et al. (2006), under review. '+(ref.cavity?'Cavity: ':'')+(ref.cavity??stage).toUpperCase()+' stage · '+cavityRef.pump+' nm pump, '+cavityRef.short+' mm between focusing mirrors, '+cavityRef.total+' mm total cavity length and '+cavityRef.fold+'° full fold. The paper gives a '+cavityRef.designWaist+' µm design waist. Table 1 reports '+cavityRef.inputPower.toFixed(2)+' W incident, '+cavityRef.outputPower+' W output and '+cavityRef.efficiency+'% doubling efficiency.';
+if (ref.cavity) $('assumptions').textContent='Fibre launch assumptions · The fibre mode is a Gaussian waist at the fibre tip with a radius of half the mode field diameter. Use the diameter at the pump wavelength: the fibre\'s quoted numerical aperture is not the beam divergence. The output coupler is a thin lens, so the focus offset counts from its effective focal length; a real collimator\'s mechanical scale has a different zero, but changes in offset carry over. The mode field diameter, focal length, focus travel and clear aperture shown first are illustrative: enter your fibre and collimator. The cavity is the LBO showcase, with its assumptions.';
+else $('assumptions').textContent='Showcase assumptions · The '+ref.rail+' mm external injection rail, input waist, injection lens focal lengths and placements, and distance from the coupler to the first curved mirror are illustrative. We interpret the tabulated cavity length as a geometric round trip and the crystal length along the central ray. The scalar pump index is set to '+ref.index.toFixed(2)+'. '+(stage==='bbo'?'The Brewster plane lies in the cavity plane. The model carries the 25 mm mirror focal length over from the first stage.':'The 25 mm focusing mirrors have a 50 mm radius of curvature.');
 numeric($('source'),'Pump wavelength (nm)',path,'wavelength');
 numeric($('source'),'Rail length (mm)',path,'length');
 addWaistFields($('source'),path.source);
@@ -101,7 +123,7 @@ function resetSearch(){
   $('apply-layout').hidden=true;$('moves').textContent='';$('limits').hidden=true;
 }
 function edited(){
-  resetSearch();$('share-status').hidden=true;analyze();
+  resetSearch();$('share-status').hidden=true;$('launch-result').hidden=true;analyze();
 }
 function probeValue(){return Number($('probe').value);}
 function updateProbe(){
@@ -138,6 +160,16 @@ function analyze(){
   $('wavelengths').textContent=Number.isFinite(path.wavelength)&&path.wavelength>0?fmt(path.wavelength,3)+' → '+fmt(path.wavelength/2,3)+' nm':'—';
   $('add').disabled=!Number.isFinite(path.length)||path.length<1||path.lenses.length>=maxLenses;
   $('search').disabled=!target||!!worker||!path.lenses.some(l=>!l.locked);
+  if (ref.cavity) {
+    let state = '';
+    try {
+      const {w, transmission} = apertureTransmission(path, path.launch.aperture);
+      state = 'Beam radius at the coupler lens '+fmt(w, 3)+' mm. The '+fmt(path.launch.aperture, 2)+' mm clear aperture passes '+(100*transmission).toFixed(transmission > 0.9999 ? 4 : 2)+'% of the power.';
+      $('solve-launch').disabled = !target;
+    } catch (e) { state = e.message; $('solve-launch').disabled = true; }
+    $('launch-state').textContent = state;
+  }
+  refreshFields();
   updateProbe();
 }
 $('probe').oninput=updateProbe;
@@ -198,6 +230,37 @@ $('share').onclick=async()=>{
     labelFor(status,'Copy this layout link',input);input.select();
   }
 };
+if (ref.cavity) {
+  $('fiber-launch').hidden = false;
+  const lens = () => path.lenses[0];
+  const offset = () => lens() ? lens().z - lens().f : NaN, distance = () => lens() ? path.length - lens().z : NaN;
+  const fields = $('fiber-fields');
+  derived(fields, 'Mode field diameter (µm)', () => 2*path.source.t.w, v => { path.source.t.w = path.source.s.w = v/2; });
+  derived(fields, 'Coupler focal length (mm)', () => lens()?.f ?? NaN, v => {
+    if (!lens()) return; const d = offset(), D = distance(); lens().f = v; applyLaunch(path, d, D); });
+  derived(fields, 'Focus offset from focal length (µm)', () => 1000*offset(), v => { if (lens()) applyLaunch(path, v/1000, distance()); }, 1);
+  derived(fields, 'Coupler lens to input coupler (mm)', () => distance(), v => { if (lens()) applyLaunch(path, offset(), v); }, 2);
+  numeric(fields, 'Focus travel, ± (mm)', path.launch, 'travel');
+  numeric(fields, 'Clear aperture (mm)', path.launch, 'aperture');
+  numeric(fields, 'Shortest distance on the bench (mm)', path.launch, 'minDistance');
+  numeric(fields, 'Longest distance on the bench (mm)', path.launch, 'maxDistance');
+  $('solve-launch').onclick = () => {
+    const result = $('launch-result');
+    try {
+      const target = targetMode(path).q;
+      const before = overlap(propagate(sourceQ(path), lensOrder(path.lenses), path.length), target);
+      const found = solveLaunch(path, target, path.launch);
+      applyLaunch(path, found.delta, found.D);
+      renderLenses(); edited();
+      const parts = ['Focus offset '+(found.delta >= 0 ? '+' : '')+fmt(1000*found.delta, 1)+' µm and '+fmt(found.D, 1)+' mm to the input coupler give '+percent(found.eta)+' overlap (previously '+percent(before)+').'];
+      if (1 - found.eta > 1e-4) parts.push('The rest is lost because the cavity mode differs between the tangential and sagittal planes, which a round fibre beam cannot follow.');
+      parts.push('A focus error of ±'+fmt(1000*found.tolerance.delta, 1)+' µm, or a distance error of ±'+fmt(found.tolerance.D, 1)+' mm, costs 1% of that overlap.');
+      if (found.limits.length) parts.push('The result sits at the '+found.limits.join(' and ')+'; widen it if the bench allows.');
+      result.textContent = parts.join(' ');
+    } catch (e) { result.textContent = e.message; }
+    result.hidden = false;
+  };
+}
 renderLenses();analyze();
 new ResizeObserver(updateProbe).observe($('plot'));
 // Opening a second shared design in this tab can be a fragment-only navigation.

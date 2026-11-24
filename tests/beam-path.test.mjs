@@ -221,3 +221,50 @@ test('A touch can grab the nearest lens across a 44 px target without moving the
   assert.equal(pick(179 - 22, 40, 'mouse'), null);
   assert.equal(pick(179, 40, 'mouse'), path.lenses[0]);
 });
+
+import {applyLaunch, apertureTransmission, imagingSeed, launchGeometry, launchOverlap, solveLaunch} from '../beam-path/fiber.mjs';
+
+test('The fibre showcase launches a round fibre mode through one collimator into the LBO cavity', () => {
+  const p = showcase('fiber'), ref = showcases.fiber;
+  assert.deepEqual(p.ring, showcase('lbo').ring);
+  assert.deepEqual(p.source, {t: {w: ref.mfd/2, z: 0}, s: {w: ref.mfd/2, z: 0}});
+  assert.equal(p.lenses.length, 1);
+  assert.deepEqual(launchGeometry(p), {w0: ref.mfd/2, f: ref.f, delta: ref.offset, D: ref.distance});
+  assert.equal(openLayout(new URL('https://x/beam-path/?stage=fiber')).stage, 'fiber');
+  p.launch.travel = 0.25;
+  const back = openLayout(shareLayout('https://x/beam-path/', {stage: 'fiber', path: p, gap: 10, fit: null}));
+  assert.equal(back.stage, 'fiber'); assert.equal(back.path.launch.travel, 0.25);
+  p.lenses.push({z: 300, f: 100, axis: 'both', locked: false});
+  assert.throws(() => launchGeometry(p), /collimator alone/);
+});
+
+test('Waist-to-waist imaging matches a round target exactly', () => {
+  const target = [waistQ(200, 1118, 60), waistQ(200, 1118, 60)];
+  const seed = imagingSeed(target, 3.3, 1118, 11);
+  close(launchOverlap(target, 3.3, 1118, 11, seed.delta, seed.D), 1, 1e-9);
+  assert.equal(imagingSeed(target, 3.3, 1118, 1), null);  // f below f0 = π w0 wt / λ
+});
+
+test('The launch search finds the best focus and distance and their 1% tolerances', () => {
+  const p = showcase('fiber'), target = targetMode(p).q;
+  const found = solveLaunch(p, target, p.launch);
+  let brute = 0;
+  for (let i = 0; i <= 1000; i++) for (let j = 0; j <= 300; j++)
+    brute = Math.max(brute, launchOverlap(target, 3.3, 1118, 11, -0.5 + i/1000, 30 + 1470*j/300));
+  assert.ok(found.eta >= brute - 1e-9 && found.eta < 1, found.eta+' vs '+brute);
+  assert.deepEqual(found.limits, []);
+  const at = (d, D) => launchOverlap(target, 3.3, 1118, 11, d, D);
+  close(Math.min(at(found.delta + found.tolerance.delta, found.D), at(found.delta - found.tolerance.delta, found.D)), 0.99*found.eta, 1e-9);
+  close(Math.min(at(found.delta, found.D + found.tolerance.D), at(found.delta, found.D - found.tolerance.D)), 0.99*found.eta, 1e-9);
+  applyLaunch(p, found.delta, found.D);
+  close(overlap(propagate(sourceQ(p), lensOrder(p.lenses), p.length), target), found.eta);
+  const tight = solveLaunch(p, target, {...p.launch, travel: 0.05});
+  assert.deepEqual(tight.limits, ['focus travel', 'maximum distance']); assert.ok(tight.eta < found.eta);
+});
+
+test('Clear-aperture transmission follows the Gaussian power inside a circle', () => {
+  const p = showcase('fiber');
+  const {w, transmission} = apertureTransmission(p, 2);
+  close(w, spot(drift(waistQ(3.3, 1118), 11), 1118).w / 1000);
+  close(transmission, 1 - Math.exp(-2 / (w*w)));
+});

@@ -49,7 +49,7 @@ Clean design is the main tool for focusing a visitor's intention, not decoration
 | Layer | Question it answers | Tools | Artefact | First pass |
 | --- | --- | --- | --- | --- |
 | 0 Orient | What am I being asked to do? | This page, one showcase | Task restated as target mode, constraints and success measure | 1 h |
-| 1 Explore | What does a lens do to my beam? | Beam path simulator, LBO and BBO showcases | Shared layout link and three short answers | 2 h |
+| 1 Explore | What does a lens do to my beam? | Beam path simulator, LBO, BBO and fibre-launch showcases | Shared layout link and three short answers | 2 h |
 | 2 Measure | What beam do I actually have? | Profiler (browser workbench or camera), fits, D4σ, D50/D86.5 | One export per plane at five or more planes (snapshot ZIP from the camera application, JSON from the browser workbench); w(z) table | Half a lab day |
 | 3 Design | Which layout do I build, and did it work? | Simulator with measured input, lab lens catalogue, locks, clearance, optimiser | Layout link; predicted versus measured radii | 1–2 days |
 | 4 Extend | The tools cannot do what I need | Repository, tests, logbook | Issue or pull request with a validation test | Thesis scale |
