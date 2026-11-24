@@ -44,4 +44,12 @@ select {appearance:none;padding-right:32px;background:#fff linear-gradient(45deg
 .notice,.progress {padding:12px 15px;line-height:1.5;font-size:.9rem;border-radius:7px}.notice {background:#fff4de;color:#714a10;border-left:3px solid #d79b35}.progress {display:flex;justify-content:space-between;background:#e2edf0;color:#294b54}.progress button {color:inherit;text-decoration:underline}
 footer {display:flex;justify-content:space-between;gap:24px;line-height:1.55;margin:22px 0 35px}footer p {max-width:810px}footer a {white-space:nowrap}
 @media(max-width:880px) {.top-inner,main {width:calc(100% - 36px)}.sample {gap:6px}.sample img {width:32px;height:34px}.sample small {display:none}.instrument {grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px}.results {padding:16px}.fit-controls {flex-wrap:nowrap}}
-@media(max-width:640px) {.top-inner,main {width:calc(100% - 26px)}.top-inner {height:55px}.top nav {gap:15px}.top nav a {font-size:.79rem}.current {display:none}.intro {margin:23px 0 18px;flex-wrap:wrap;gap:13px}.intro p {font-size:.93rem}.sample-grid {display:flex;overflow-x:auto;padding:2px 0 7px;scroll-snap-type:x proximity}.sample {flex:0 0 auto;scroll-snap-align:start}.sample img {width:34px}.sample strong {font-size:.81rem}.instrument {grid-template-columns:1fr;margin-top:10px}.stage {height:min(66vw,330px)}.view-heading,.view-tools,.view-footer {padding-left:14px;padding-right:14px}.section-title {flex-wrap:wrap}.fit-block,.settings {padding:16px}.fit-controls {flex-wrap:wrap}.results {padding:16px 18px}.metrics {margin-top:13px}footer {flex-direction:column;gap:10px}}
+@media(max-width:640px) {.top-inner,main {width:calc(100% - 26px)}.top nav a {font-size:.79rem}.intro {margin:23px 0 18px;flex-wrap:wrap;gap:13px}.intro p {font-size:.93rem}.sample-grid {display:flex;overflow-x:auto;padding:2px 0 7px;scroll-snap-type:x proximity}.sample {flex:0 0 auto;scroll-snap-align:start}.sample img {width:34px}.sample strong {font-size:.81rem}.instrument {grid-template-columns:1fr;margin-top:10px}.stage {height:min(66vw,330px)}.view-heading,.view-tools,.view-footer {padding-left:14px;padding-right:14px}.section-title {flex-wrap:wrap}.fit-block,.settings {padding:16px}.fit-controls {flex-wrap:wrap}.results {padding:16px 18px}.metrics {margin-top:13px}footer {flex-direction:column;gap:10px}}
+
+.top .brand, .top nav a { display: inline-flex; align-items: center; min-height: 44px; }
+
+/* Keep every tool reachable when the navigation and brand need separate rows. */
+@media (max-width: 640px) {
+  .top-inner { height: auto; min-height: 55px; flex-wrap: wrap; column-gap: 1rem; }
+  .top nav { height: auto; flex-wrap: wrap; gap: 0 .85rem; }
+}

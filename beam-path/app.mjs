@@ -2,7 +2,7 @@ import {axes, lensOrder, maxLenses, overlap, propagate, sourceQ, spot, targetMod
 import {showcases} from './showcases.mjs';
 import {fitProjection, openLayout, shareLayout} from './layout.mjs';
 import {renderSearchResult} from './search-result.mjs';
-import {draw, positionAt} from './plot.mjs';
+import {draw, lensMarkerAt, positionAt} from './plot.mjs';
 
 const $ = id => document.getElementById(id);
 const fmt = (number, digits=2) => Number(number.toFixed(digits)).toLocaleString('en-US', {maximumFractionDigits:digits});
@@ -62,7 +62,7 @@ function showImportNote() {
   note.hidden = false;
 }
 document.querySelector('[data-stage="'+stage+'"]').setAttribute('aria-current','true');
-$('reference').textContent='Published '+stage.toUpperCase()+' stage · '+ref.pump+' nm pump, '+ref.short+' mm between focusing mirrors, '+ref.total+' mm total cavity length and '+ref.fold+'° full fold. The paper gives a '+ref.designWaist+' µm design waist. Table 1 reports '+ref.inputPower.toFixed(2)+' W incident, '+ref.outputPower+' W output and '+ref.efficiency+'% doubling efficiency.';
+$('reference').textContent='From Friedenauer et al. (2006), under review. '+stage.toUpperCase()+' stage · '+ref.pump+' nm pump, '+ref.short+' mm between focusing mirrors, '+ref.total+' mm total cavity length and '+ref.fold+'° full fold. The paper gives a '+ref.designWaist+' µm design waist. Table 1 reports '+ref.inputPower.toFixed(2)+' W incident, '+ref.outputPower+' W output and '+ref.efficiency+'% doubling efficiency.';
 $('assumptions').textContent='Showcase assumptions · The '+ref.rail+' mm external injection rail, input waist, injection lens focal lengths and placements, and distance from the coupler to the first curved mirror are illustrative. We interpret the tabulated cavity length as a geometric round trip and the crystal length along the central ray. The scalar pump index is set to '+ref.index.toFixed(2)+'. '+(stage==='bbo'?'The Brewster plane lies in the cavity plane. The model carries the 25 mm mirror focal length over from the first stage.':'The 25 mm focusing mirrors have a 50 mm radius of curvature.');
 numeric($('source'),'Pump wavelength (nm)',path,'wavelength');
 numeric($('source'),'Rail length (mm)',path,'length');
@@ -143,12 +143,9 @@ function analyze(){
 $('probe').oninput=updateProbe;
 $('plot').onpointerdown=e=>{
   if (!beamValid) return;
-  const box=$('plot').getBoundingClientRect(),z=positionAt($('plot'),e,path.length);
-  const pointIsHandle=e.clientY-box.top<=31;
-  const lens=[...path.lenses].reverse().find(l=>Math.abs(l.z-z)<14*path.length/(box.width-71));
-  dragging={lens:pointIsHandle?lens:null};
+  dragging={lens:lensMarkerAt($('plot'),e,path)};
   if (dragging.lens?.locked) {dragging=null;return;}
-  $('plot').setPointerCapture(e.pointerId);if (!dragging.lens) {$('probe').value=z;updateProbe();}
+  $('plot').setPointerCapture(e.pointerId);if (!dragging.lens) {$('probe').value=positionAt($('plot'),e,path.length);updateProbe();}
 };
 $('plot').onpointermove=e=>{
   if (!dragging) return;

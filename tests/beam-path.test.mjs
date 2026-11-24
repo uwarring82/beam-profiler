@@ -1,9 +1,11 @@
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {axisOverlap, cameraRadii, drift, lensQ, lensOrder, overlap, propagate, ringMode, sourceQ, spot, targetMode, validatePath, waistQ} from '../beam-path/optics.mjs';
-import {showcase} from '../beam-path/showcases.mjs';
+import {showcase, showcases} from '../beam-path/showcases.mjs';
 import {optimize} from '../beam-path/optimize.mjs';
 import {fitProjection, openLayout, shareLayout} from '../beam-path/layout.mjs';
+import {lensMarkerAt} from '../beam-path/plot.mjs';
 import {renderSearchResult} from '../beam-path/search-result.mjs';
 
 function close(a,b,epsilon=1e-9){assert.ok(Math.abs(a-b)<epsilon, a+' != '+b);}
@@ -194,4 +196,28 @@ test('Both sides of each free lens are reported on a fully packed rail',()=>{
   ]);
   p.lenses[1].locked=true;
   assert.deepEqual(optimize(p,10).limits,r.limits.slice(2));
+});
+
+test('The entrance describes the wavelengths in the linked doubling chain', () => {
+  const html = readFileSync(new URL('../start/index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes(showcases.lbo.pump + ' nm'));
+  assert.ok(html.includes(showcases.bbo.harmonic + ' nm'));
+  assert.equal(showcases.lbo.harmonic, showcases.bbo.pump);
+});
+
+test('A touch can grab the nearest lens across a 44 px target without moving the probe', () => {
+  // One CSS pixel per mm, with the rail starting at x = 59 on the page.
+  const canvas = {getBoundingClientRect: () => ({left: 10, top: 20, width: 671})};
+  const path = {length: 600, lenses: [{z: 120}, {z: 150}]};
+  const pick = (x, y, pointerType = 'touch') =>
+    lensMarkerAt(canvas, {clientX: x, clientY: y, pointerType}, path);
+
+  assert.equal(pick(179 - 22, 20), path.lenses[0]);
+  assert.equal(pick(209 + 22, 20 + 44), path.lenses[1]);
+  assert.equal(pick(179 - 23, 40), null);
+  assert.equal(pick(179, 65), null);
+  assert.equal(pick(190, 40), path.lenses[0]);
+  assert.equal(pick(199, 40), path.lenses[1]);
+  assert.equal(pick(179 - 22, 40, 'mouse'), null);
+  assert.equal(pick(179, 40, 'mouse'), path.lenses[0]);
 });
