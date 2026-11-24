@@ -23,3 +23,5 @@
 #fiber-launch .notice{margin:4px 0 16px}.launch-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 22px}.launch-groups .fields{grid-template-columns:1fr}
 #solve-launch{margin:2px 0 18px}.field-hint{font-size:.76rem;color:var(--muted);line-height:1.35}
 @media(max-width:780px){.launch-groups{grid-template-columns:1fr}}
+#launch-state.problem{color:#9a2f1f;font-weight:600}#fiber-launch [aria-invalid=true]{border-color:#c0392b;box-shadow:0 0 0 1px #c0392b}
+#fiber-launch .confirm{flex-direction:row;align-items:center;gap:7px;font-size:.82rem;margin:2px 0 4px;color:#3e5462}

@@ -15,7 +15,8 @@ export const showcases = {
   // free settings. Fibre and collimator values are illustrative.
   fiber: {name: 'Fibre launch · infrared to green', cavity: 'lbo', pump: 1118, harmonic: 559,
     mfd: 6.6, f: 11, offset: 0, distance: 600,
-    launch: {travel: 0.5, aperture: 5.5, minDistance: 30, maxDistance: 1500}}
+    launch: {travel: 0.5, aperture: 5.5, minDistance: 30, maxDistance: 1500,
+      confirmed: {mfd: false, f: false, travel: false, aperture: false}}}
 };
 
 export function showcase(id) {
@@ -37,6 +38,6 @@ function fiberShowcase(id) {
   p.source = {t: {w, z: 0}, s: {w, z: 0}};
   p.lenses = [{z: ref.f + ref.offset, f: ref.f, axis: 'both', locked: false}];
   p.length = ref.f + ref.offset + ref.distance;
-  p.launch = {...ref.launch};
+  p.launch = structuredClone(ref.launch);
   return p;
 }

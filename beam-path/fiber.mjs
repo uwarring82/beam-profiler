@@ -52,10 +52,13 @@ function golden(fn, lo, hi, tolerance) {
   return (a + b) / 2;
 }
 
-// Distance from x0 to where fn falls to level, searching along +1 or -1.
-function edge(fn, x0, sign, level, limit) {
-  let lo = 0, hi = Math.max(limit, 1e-9);
-  if (fn(x0 + sign * hi) >= level) return Infinity;
+// Distance from x0 to where fn falls to level, searching along +1 or -1
+// up to a mechanical stop `room` away. Null: already at the stop.
+// Infinity: the level is not reached before the stop.
+function edge(fn, x0, sign, level, room) {
+  if (!(room > 1e-9)) return null;
+  if (fn(x0 + sign * room) >= level) return Infinity;
+  let lo = 0, hi = room;
   for (let i = 0; i < 80; i++) {
     const mid = (lo + hi) / 2;
     if (fn(x0 + sign * mid) >= level) lo = mid; else hi = mid;
@@ -63,53 +66,86 @@ function edge(fn, x0, sign, level, limit) {
   return (lo + hi) / 2;
 }
 
+// For fixed focus the overlap against distance has a single broad peak per
+// axis: scan, then refine between the neighbours of the best sample.
+function bestDistance(eta, delta, lo, hi) {
+  const n = 60, step = (hi - lo) / n;
+  let bj = 0, bv = -1;
+  for (let j = 0; j <= n; j++) { const v = eta(delta, lo + j * step); if (v > bv) { bv = v; bj = j; } }
+  const D = golden(x => eta(delta, x), Math.max(lo, lo + (bj - 1) * step), Math.min(hi, lo + (bj + 1) * step), 1e-7 * (1 + hi));
+  const v = eta(delta, D);
+  return v >= bv ? {D, eta: v} : {D: lo + bj * step, eta: bv};
+}
+
+// The optimum is a narrow ridge in (focus, distance): the distance must
+// follow the focus. Re-optimise the distance at every focus value instead
+// of gridding both, and evaluate the imaging estimate as its own start.
+function search(eta, dLo, dHi, DLo, DHi, seeds) {
+  let best = {eta: -1};
+  const consider = delta => { const r = bestDistance(eta, delta, DLo, DHi); if (r.eta > best.eta) best = {delta, D: r.D, eta: r.eta}; };
+  const n = dHi > dLo ? 800 : 0, step = n ? (dHi - dLo) / n : 0;
+  for (let i = 0; i <= n; i++) consider(dLo + i * step);
+  for (const seed of seeds) {
+    if (seed.delta < dLo || seed.delta > dHi) continue;
+    if (seed.D >= DLo && seed.D <= DHi && eta(seed.delta, seed.D) > best.eta)
+      best = {delta: seed.delta, D: seed.D, eta: eta(seed.delta, seed.D)};
+    consider(seed.delta);
+  }
+  if (n) {
+    const c = best.delta;
+    consider(golden(x => bestDistance(eta, x, DLo, DHi).eta, Math.max(dLo, c - step), Math.min(dHi, c + step), 1e-10));
+  }
+  return best;
+}
+
+export function checkLaunch(w0, f, launch) {
+  const {travel, aperture, minDistance, maxDistance} = launch;
+  if (!(w0 > 0)) throw Error('Enter a positive mode field diameter.');
+  if (!(f > 0)) throw Error('Enter a positive effective focal length.');
+  if (!(travel > 0)) throw Error('Enter a positive focus travel.');
+  if (!(aperture > 0)) throw Error('Enter a positive clear aperture.');
+  if (!(minDistance >= 0) || !(maxDistance > minDistance)) throw Error('Enter a distance range with the longest above the shortest.');
+}
+
 // Best focus offset and distance within the coupler's travel and the bench.
-export function solveLaunch(path, target, launch) {
-  const {w0, f} = launchGeometry(path), lam = path.wavelength;
+// With lockFocus the current focus offset stays fixed. The result names
+// active limits, the overlap without them, and one-sided 1% tolerances.
+export function solveLaunch(path, target, launch, {lockFocus = false} = {}) {
+  const {w0, f, delta: current} = launchGeometry(path), lam = path.wavelength;
+  checkLaunch(w0, f, launch);
   const {travel, minDistance, maxDistance} = launch;
-  if (!(travel > 0) || !(minDistance >= 0) || !(maxDistance > minDistance))
-    throw Error('Enter a positive focus travel and a distance range with maximum above minimum.');
+  if (lockFocus && Math.abs(current) > travel) throw Error('The locked focus setting lies outside the focus travel.');
   const eta = (delta, D) => launchOverlap(target, w0, lam, f, delta, D);
-  const n = 400;
-  let best = {delta: 0, D: minDistance, eta: -1};
-  for (let i = 0; i <= n; i++) {
-    const delta = -travel + 2 * travel * i / n;
-    for (let j = 0; j <= n; j++) {
-      const D = minDistance + (maxDistance - minDistance) * j / n;
-      const value = eta(delta, D);
-      if (value > best.eta) best = {delta, D, eta: value};
-    }
-  }
-  // The optimum is a narrow ridge: delta sets the image distance. Refine the
-  // best distance for each delta inside the neighbouring grid cells.
-  const dStep = 2 * travel / n, DStep = (maxDistance - minDistance) / n;
-  const bestD = delta => golden(D => eta(delta, D),
-    Math.max(minDistance, best.D - 4 * DStep), Math.min(maxDistance, best.D + 4 * DStep), 1e-7);
   const seed = imagingSeed(target, w0, lam, f);
-  const candidates = [best.delta];
-  if (seed && Math.abs(seed.delta) <= travel) candidates.push(seed.delta);
-  for (const start of candidates) {
-    const delta = golden(x => eta(x, bestD(x)),
-      Math.max(-travel, start - 2 * dStep), Math.min(travel, start + 2 * dStep), 1e-10);
-    const D = bestD(delta), value = eta(delta, D);
-    if (value > best.eta) best = {delta, D, eta: value};
-  }
-  const level = 0.99 * best.eta;
-  const tolerance = {
-    delta: Math.min(edge(x => eta(x, best.D), best.delta, 1, level, 2 * travel),
-      edge(x => eta(x, best.D), best.delta, -1, level, 2 * travel)),
-    D: Math.min(edge(x => eta(best.delta, x), best.D, 1, level, maxDistance),
-      edge(x => eta(best.delta, x), best.D, -1, level, Math.max(best.D, 1e-6)))
-  };
+  const seeds = seed ? [seed] : [];
+  const dLo = lockFocus ? current : -travel, dHi = lockFocus ? current : travel;
+  const best = search(eta, dLo, dHi, minDistance, maxDistance, seeds);
+
   const limits = [];
-  if (travel - Math.abs(best.delta) < 1e-6) limits.push('focus travel');
-  if (best.D - minDistance < 1e-4) limits.push('minimum distance');
-  if (maxDistance - best.D < 1e-4) limits.push('maximum distance');
-  return {...best, tolerance, limits};
+  if (lockFocus) limits.push('locked focus');
+  else if (travel - Math.abs(best.delta) < 1e-6) limits.push('focus travel');
+  if (best.D - minDistance < 1e-4) limits.push('shortest distance');
+  if (maxDistance - best.D < 1e-4) limits.push('longest distance');
+  // Without the limits: free focus within most of f, distance up to the
+  // imaging estimate's reach or the bench, whichever is longer.
+  const reach = Math.max(maxDistance, seed ? 2 * seed.D : 0, 1);
+  const free = limits.length ? search(eta, -0.9 * f, 0.9 * f, 0, reach, seeds) : best;
+  const ceiling = Math.max(free.eta, best.eta);
+
+  const level = 0.99 * best.eta;
+  const focus = d => eta(d, best.D), distance = D => eta(best.delta, D);
+  const tolerance = {
+    delta: lockFocus ? null : {minus: edge(focus, best.delta, -1, level, best.delta + travel),
+      plus: edge(focus, best.delta, 1, level, travel - best.delta)},
+    D: {minus: edge(distance, best.D, -1, level, best.D - minDistance),
+      plus: edge(distance, best.D, 1, level, maxDistance - best.D)}
+  };
+  return {...best, ceiling, tolerance, limits};
 }
 
 // Power through a circular clear aperture of diameter a (mm) at the lens.
 export function apertureTransmission(path, aperture) {
+  if (!(aperture > 0)) throw Error('Enter a positive clear aperture.');
   const {w0, f, delta} = launchGeometry(path);
   const w = spot(drift(waistQ(w0, path.wavelength), f + delta), path.wavelength).w / 1000;
   const radius = aperture / 2;
