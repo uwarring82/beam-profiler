@@ -2,7 +2,7 @@
 
 **[Open the browser profiler](https://uwarring82.github.io/beam-profiler/)** to explore five calibrated samples, open a monochrome PNG/TIFF or reopen a Beam Lab snapshot. Images and fits are processed on your device. Camera acquisition and recording use the [local application](#run).
 
-[Beam path simulator](https://uwarring82.github.io/beam-profiler/beam-path/) · [Intensity fits](#transverse-intensity-fits) · [Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
+[Beam path simulator](https://uwarring82.github.io/beam-profiler/beam-path/) · [Intensity fits](#transverse-intensity-fits) · [Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Entrance work programme](docs/work-programme-entrance.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
 
 [![Tests](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml/badge.svg)](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml)
 
