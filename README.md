@@ -1,5 +1,7 @@
 # Beam Lab
 
+**[Open the browser profiler](https://uwarring82.github.io/beam-profiler/)** to explore five calibrated samples, open a monochrome PNG/TIFF or reopen a Beam Lab snapshot. Images and fits are processed on your device. Camera acquisition and recording use the [local application](#run).
+
 [Intensity fits](#transverse-intensity-fits) · [Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
 
 [![Tests](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml/badge.svg)](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml)
@@ -17,6 +19,14 @@ Recorded with the built-in simulator ([all states](docs/images/)):
 | ![Replay of a recorded session with original timestamps](docs/images/09-replay.png) | ![Inspection sheet with image, overlays, profiles and plain-text details](docs/images/10-inspection.png) |
 
 Further states: [offline](docs/images/01-offline.png), [warm-up](docs/images/02-warming-up.png), [saturated](docs/images/04-saturated.png), [ROI without beam](docs/images/05-roi-no-beam.png), [dark reference containing beam light](docs/images/07-frozen-dark-roi.png), [recording](docs/images/08-recording.png).
+
+## Browser workbench
+
+The public workbench starts with a precomputed sample measurement. **Open frame** reads a single 8/16-bit monochrome PNG/TIFF or a snapshot ZIP with its raw frame, dark reference and calibration. Standalone files start in pixels and use the full scale of their storage type. Set the effective scale and sensor maximum under **ROI & analysis settings** for unscaled 10/12-bit camera data. The image limit is 4 MP and the input file limit is 48 MiB.
+
+**Run fit** loads the numerical runtime on demand and uses the same Python analysis and fitting modules as the camera application. The browser downloads pinned Pyodide 0.28.3, NumPy, Pillow and SciPy from jsDelivr. Frames stay on the device. Select a dark margin around the beam when drawing an ROI. The workbench flags a D4σ change above 10% when switching between the current threshold and 5σ (3σ if already at or above 5σ). This diagnostic is sensitive to noise and genuine weak wings. It does not correct the reported moments. The JSON export includes settings, scores and sampled integrated profiles. Residuals export at full ROI resolution as signed float32 TIFF.
+
+The site is served from the repository root with GitHub Pages. For local development run `python -m http.server 8000 --bind 127.0.0.1` from that root. After changing the sample definitions or measured quantities, regenerate the example images and readouts with `python scripts/build_web_samples.py` in the project environment.
 
 ## Install
 
