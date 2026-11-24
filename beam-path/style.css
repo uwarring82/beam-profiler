@@ -19,4 +19,7 @@
 
 /* Three showcases: one per row on a phone. */
 @media(max-width:560px){#presets{flex-direction:column}.preset{max-width:none}}
-#fiber-launch .section-title{margin-bottom:14px}
+#fiber-launch fieldset{border:0;padding:0;margin:0 0 16px;min-width:0}#fiber-launch legend{font-weight:650;font-size:.96rem;margin-bottom:8px;padding:0}
+#fiber-launch .notice{margin:4px 0 16px}.launch-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 22px}.launch-groups .fields{grid-template-columns:1fr}
+#solve-launch{margin:2px 0 18px}.field-hint{font-size:.76rem;color:var(--muted);line-height:1.35}
+@media(max-width:780px){.launch-groups{grid-template-columns:1fr}}

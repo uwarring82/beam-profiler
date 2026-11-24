@@ -168,6 +168,7 @@ function analyze(){
       $('solve-launch').disabled = !target;
     } catch (e) { state = e.message; $('solve-launch').disabled = true; }
     $('launch-state').textContent = state;
+    $('launch-example').hidden = !usesExample();
   }
   refreshFields();
   updateProbe();
@@ -230,20 +231,26 @@ $('share').onclick=async()=>{
     labelFor(status,'Copy this layout link',input);input.select();
   }
 };
+function usesExample() {
+  const d = showcases[stage], lens = path.lenses[0];
+  return 2*path.source.t.w === d.mfd && lens?.f === d.f && path.launch.travel === d.launch.travel && path.launch.aperture === d.launch.aperture;
+}
 if (ref.cavity) {
   $('fiber-launch').hidden = false;
   const lens = () => path.lenses[0];
   const offset = () => lens() ? lens().z - lens().f : NaN, distance = () => lens() ? path.length - lens().z : NaN;
-  const fields = $('fiber-fields');
-  derived(fields, 'Mode field diameter (µm)', () => 2*path.source.t.w, v => { path.source.t.w = path.source.s.w = v/2; });
-  derived(fields, 'Coupler focal length (mm)', () => lens()?.f ?? NaN, v => {
-    if (!lens()) return; const d = offset(), D = distance(); lens().f = v; applyLaunch(path, d, D); });
-  derived(fields, 'Focus offset from focal length (µm)', () => 1000*offset(), v => { if (lens()) applyLaunch(path, v/1000, distance()); }, 1);
-  derived(fields, 'Coupler lens to input coupler (mm)', () => distance(), v => { if (lens()) applyLaunch(path, offset(), v); }, 2);
-  numeric(fields, 'Focus travel, ± (mm)', path.launch, 'travel');
-  numeric(fields, 'Clear aperture (mm)', path.launch, 'aperture');
-  numeric(fields, 'Shortest distance on the bench (mm)', path.launch, 'minDistance');
-  numeric(fields, 'Longest distance on the bench (mm)', path.launch, 'maxDistance');
+  const hint = (field, text) => { const small = document.createElement('small'); small.className = 'field-hint'; small.textContent = text; field.parentElement.append(small); };
+  hint(derived($('launch-fibre'), 'Mode field diameter (µm)', () => 2*path.source.t.w, v => { path.source.t.w = path.source.s.w = v/2; }),
+    'At the pump wavelength, from the fibre datasheet. Not the numerical aperture.');
+  hint(derived($('launch-coupler'), 'Effective focal length (mm)', () => lens()?.f ?? NaN, v => {
+    if (!lens()) return; const d = offset(), D = distance(); lens().f = v; applyLaunch(path, d, D); }),
+    'From the coupler datasheet, at the pump wavelength.');
+  hint(numeric($('launch-coupler'), 'Focus travel, ± (mm)', path.launch, 'travel'), 'How far the fibre tip can move from the focus.');
+  hint(numeric($('launch-coupler'), 'Clear aperture (mm)', path.launch, 'aperture'), 'Diameter of the coupler lens opening.');
+  numeric($('launch-bench'), 'Shortest distance to the cavity (mm)', path.launch, 'minDistance');
+  numeric($('launch-bench'), 'Longest distance to the cavity (mm)', path.launch, 'maxDistance');
+  derived($('launch-settings'), 'Fibre tip to lens, minus f (µm)', () => 1000*offset(), v => { if (lens()) applyLaunch(path, v/1000, distance()); }, 1);
+  derived($('launch-settings'), 'Coupler lens to input coupler (mm)', () => distance(), v => { if (lens()) applyLaunch(path, offset(), v); }, 2);
   $('solve-launch').onclick = () => {
     const result = $('launch-result');
     try {
@@ -252,9 +259,10 @@ if (ref.cavity) {
       const found = solveLaunch(path, target, path.launch);
       applyLaunch(path, found.delta, found.D);
       renderLenses(); edited();
-      const parts = ['Focus offset '+(found.delta >= 0 ? '+' : '')+fmt(1000*found.delta, 1)+' µm and '+fmt(found.D, 1)+' mm to the input coupler give '+percent(found.eta)+' overlap (previously '+percent(before)+').'];
+      const parts = ['A fibre tip at f '+(found.delta >= 0 ? '+ ' : '− ')+fmt(1000*Math.abs(found.delta), 1)+' µm from the lens and '+fmt(found.D, 1)+' mm from the lens to the input coupler give '+percent(found.eta)+' overlap (previously '+percent(before)+').'];
       if (1 - found.eta > 1e-4) parts.push('The rest is lost because the cavity mode differs between the tangential and sagittal planes, which a round fibre beam cannot follow.');
       parts.push('A focus error of ±'+fmt(1000*found.tolerance.delta, 1)+' µm, or a distance error of ±'+fmt(found.tolerance.D, 1)+' mm, costs 1% of that overlap.');
+      if (usesExample()) parts.unshift('With the example fibre and coupler:');
       if (found.limits.length) parts.push('The result sits at the '+found.limits.join(' and ')+'; widen it if the bench allows.');
       result.textContent = parts.join(' ');
     } catch (e) { result.textContent = e.message; }

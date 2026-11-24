@@ -6,6 +6,7 @@ Consequential changes and how they were validated. Newest first.
 
 - Added a fibre-launch showcase: the fibre mode and the output coupler alone match the LBO cavity, with focus offset and distance to the input coupler as the two settings. The search reports the 1% focus and distance tolerances and the clear-aperture transmission.
 - Validated against a brute-force grid over both settings, exact waist-to-waist imaging onto a round target, the Gaussian aperture integral and a deliberately short focus travel that reports its limits. With the illustrative 6.6 µm mode field diameter and 11 mm coupler, the overlap rises from 10.91% (collimated, 600 mm) to 99.92% at +175.8 µm and 735.4 mm. A ±6.1 µm focus error or a ±23.4 mm distance error costs 1%. Browser checks at 1280 px and 390 px; no console errors.
+- The fibre and the output coupler are the students' entry points: they sit first on the page, grouped as fibre, output coupler and bench, with datasheet hints. Example values are marked until replaced.
 
 ## 2026-11-24 · WP 1 · Student entrance
 
