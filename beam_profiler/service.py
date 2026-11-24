@@ -1,7 +1,7 @@
 import base64
 import csv
 from concurrent.futures import Future
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
 import json
@@ -16,11 +16,12 @@ from PIL import Image
 
 from . import __version__
 from .analysis import analyze
-from .report import details_text, inspection_png, measurement, preview_levels
+from .fitting import MODELS, FitResult, fit_frame
+from .report import details_text, inspection_png, measurement, preview_levels, residual_preview
 from .cameras.aravis import Aravis, AravisCamera, CameraError
-from .cameras.demo import DemoCamera
+from .cameras.demo import DEMO_MODELS, DemoCamera, demo_devices
 from .cameras.replay import ReplayCamera
-from .session import Recorder, SessionLog, list_recordings
+from .session import Recorder, SessionLog, list_recordings, tiff_bytes
 from .uncertainty import DEFAULTS as UNCERTAINTY_DEFAULTS, FIELDS, MIN_SAMPLES, UncertaintyWindow
 
 
@@ -39,6 +40,7 @@ class Snapshot:
     settings: dict
     dark: np.ndarray | None
     uncertainty_samples: list
+    fit: FitResult | None = None
 
 
 class Profiler:
@@ -56,13 +58,14 @@ class Profiler:
         self.dark_warning = None
         self.commands = Queue()
         self.lock = threading.Lock()
+        self.fit_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.settings = {"pixel_pitch_um": None, "magnification": 1., "roi": None,
                          "subtract_border": True, "noise_sigma": 3.}
         self.uncertainty_settings = dict(UNCERTAINTY_DEFAULTS)
         self.uncertainty = UncertaintyWindow({**self.uncertainty_settings, **self.settings})
         self.state = {"connected": False, "paused": False, "camera": None, "error": None,
-                      "frame_count": 0, "fps": 0., "dark_active": False, "devices": [],
+                      "frame_count": 0, "fps": 0., "fit_models": MODELS, "dark_active": False, "devices": [],
                       "driver_error": None, "recording": None, "auto_exposure": None,
                       "session": self.log.directory.name if self.log.directory else None,
                       "log_error": self.log.error}
@@ -72,6 +75,8 @@ class Profiler:
         self.thread.start()
 
     def request(self, action, data=None):
+        if action == "fit":
+            return self._fit_frozen((data or {}).get("model", "compare"))
         future = Future()
         self.commands.put((action, data or {}, future))
         return future.result(timeout=45)
@@ -141,9 +146,7 @@ class Profiler:
                 self._update(driver_error=None)
             except (CameraError, OSError) as error:
                 self._update(driver_error=str(error))
-            devices.append({"id": "demo", "model": "Gaussian beam simulator", "vendor": "Demo",
-                            "serial": "SIMULATED", "transport": "Synthetic", "driver": "demo",
-                            "available": True})
+            devices.extend(demo_devices())
             self.recordings = list_recordings(self.sessions_dir)
             devices += [r["device"] for r in self.recordings.values()]
             self._update(devices=devices)
@@ -156,7 +159,7 @@ class Profiler:
             if device_id.startswith("replay:") and device_id not in self.recordings:
                 raise ValueError("Unknown recording; rescan sources.")
             self._disconnect()
-            if device_id == "demo":
+            if device_id in DEMO_MODELS:
                 camera = DemoCamera()
             elif device_id.startswith("replay:"):
                 camera = ReplayCamera(self.recordings[device_id]["path"])
@@ -366,7 +369,14 @@ class Profiler:
             self._execute("connect", {"id":info["id"]})
             if (self.camera.info["height"],self.camera.info["width"]) != pixels.shape:
                 raise ValueError("Snapshot size differs from the connected camera.")
-            self._execute("configure", {key:info[key] for key in ["exposure_us","gain_db"]})
+            if self._replaying():
+                recorded = self.camera.read_recorded(info["replay"]["frame"])
+                if (recorded.timestamp != timestamp or recorded.maximum != maximum or
+                        not np.array_equal(recorded.pixels, pixels)):
+                    raise ValueError("Snapshot differs from its source recording.")
+                self._update(camera=dict(self.camera.info))
+            else:
+                self._execute("configure", {key: info[key] for key in ["exposure_us", "gain_db"]})
             self._execute("analysis", metadata["settings"])
             if "uncertainty" in metadata:
                 previous = metadata["uncertainty"]
@@ -379,6 +389,8 @@ class Profiler:
             self._update(paused=True, dark_active=dark is not None)
             self._reset_statistics("Snapshot restored; resume to collect fresh uncertainty samples.")
             self._publish(pixels, maximum, timestamp, count=False)
+            if metadata.get("fit"):
+                self._fit_frozen(metadata["fit"]["requested"])
         except Exception:
             self._disconnect()
             raise
@@ -523,6 +535,11 @@ class Profiler:
                         future.set_exception(error)
                 if not self.camera:
                     continue
+                # A replay has no camera buffers to drain. Pin its frame metadata
+                # and associated dark reference while the operator inspects it.
+                if self._replaying() and self.state["paused"]:
+                    self.stop_event.wait(.02)
+                    continue
                 try:
                     frame = self.camera.read()
                     failures = 0
@@ -564,6 +581,33 @@ class Profiler:
             raise ValueError("No frame is available to export.")
         return snap
 
+    def _fit_frozen(self, model):
+        # The caller fits an immutable snapshot outside the acquisition thread.
+        # Edits, resume or disconnect may invalidate it while the solver runs.
+        if not self.fit_lock.acquire(blocking=False):
+            raise ValueError("A fit is already running.")
+        try:
+            with self.lock:
+                snap = self.snapshot
+                if snap is None or not self.state["paused"]:
+                    raise ValueError("Freeze a frame before fitting.")
+            fit = fit_frame(snap.pixels, snap.dark, snap.metrics, model)
+            preview, limit = residual_preview(fit.residual)
+            out = BytesIO()
+            preview.save(out, format="PNG")
+            packet = {**snap.packet, "fit": fit.summary, "fit_residual_limit_dn": limit,
+                      "fit_residual_png": base64.b64encode(out.getvalue()).decode()}
+            with self.lock:
+                if self.snapshot is not snap or not self.state["paused"]:
+                    raise ValueError("Frame or analysis settings changed during the fit. Fit the new frame.")
+                self.snapshot = replace(snap, fit=fit, packet=packet)
+            best = fit.summary["candidates"][0]
+            self.log.add("fit", f"{best['label']} fit: RMS residual {best['rmse_dn']:.4g} DN.",
+                         timestamp=packet["timestamp"], requested=model, model=best["model"])
+            return self.status()
+        finally:
+            self.fit_lock.release()
+
     def inspection(self, palette="thermal"):
         """Inspection PNG of the same frame and statistics an export would contain."""
         snap = self._exported_snapshot()
@@ -579,6 +623,8 @@ class Profiler:
             Image.fromarray(snap.pixels).save(raw, format="TIFF")
             archive.writestr("raw.tiff", raw.getvalue())
             archive.writestr("measurement.json", json.dumps(measurement(snap), indent=2))
+            if snap.fit is not None:
+                archive.writestr("fit-residual.tiff", tiff_bytes(snap.fit.residual))
             archive.writestr("details.txt", details_text(snap, palette))
             archive.writestr("inspection.png", inspection_png(snap, palette))
             self.log.add("export", f"Raw data exported for frame {snap.packet['timestamp']}.", palette=palette)

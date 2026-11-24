@@ -6,12 +6,12 @@ authors:
   - family-names: Warring
     given-names: Ulrich
     affiliation: University of Freiburg
-version: 0.4.0
-date-released: 2026-09-24
+version: 0.5.0
+date-released: 2026-11-24
 license: MIT
 repository-code: "https://github.com/uwarring82/beam-profiler"
 url: "https://github.com/uwarring82/beam-profiler"
-abstract: "Local laser beam profiler with a browser UI and Python acquisition from GenICam cameras via Aravis. Computes intensity-weighted centroids, D4σ diameters and principal axes on native pixels, with a rolling single-frame repeatability estimate and an explicit partial uncertainty budget. Exports raw TIFF, profiles and full measurement metadata."
+abstract: "Local laser beam profiler with a browser UI and Python acquisition from GenICam cameras via Aravis. Measures centroids, D4σ and encircled-energy diameters and fits Gaussian, flat-top and higher-order intensity profiles, with a rolling single-frame repeatability estimate and an explicit partial uncertainty budget. Exports raw TIFF, profiles and full measurement metadata."
 keywords:
   - beam profiling
   - laser optics

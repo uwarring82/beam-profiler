@@ -1,10 +1,10 @@
 # Beam Lab
 
-[Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
+[Intensity fits](#transverse-intensity-fits) · [Session log & replay](#session-log-and-replay) · [Export format](#export-format) · [Uncertainty model](docs/uncertainty.md) · [Development logbook](docs/logbook.md) · [Citation](CITATION.cff) · [MIT license](LICENSE)
 
 [![Tests](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml/badge.svg)](https://github.com/uwarring82/beam-profiler/actions/workflows/test.yml)
 
-A local laser beam profiler with a browser UI and Python camera acquisition. Built and hardware-tested on an Apple Silicon Mac with a **FLIR Firefly FFY-U3-16S2M-DL**, serial **20415440**. A built-in Gaussian beam simulator runs without any camera.
+A local laser beam profiler with a browser UI and Python camera acquisition. Built and hardware-tested on an Apple Silicon Mac with a **FLIR Firefly FFY-U3-16S2M-DL**, serial **20415440**. Five simulated intensity profiles are available without a camera.
 
 ## Screenshots
 
@@ -39,7 +39,7 @@ python -m beam_profiler.server    # or: beam-profiler
 
 Open **http://127.0.0.1:8877**, select the FLIR camera, and click **Connect camera**. Close other camera applications first. Use `--port 8878` if the port is busy. Stop with Ctrl-C to release the camera.
 
-To reopen a previously exported frame, its camera settings and dark reference, use `python3 -m beam_profiler.server --restore-snapshot path/to/beam-snapshot.zip`. The same camera must be available. It starts frozen, with the uncertainty window cleared; **Resume** collects new samples. Historical frames are never treated as fresh repeatability data.
+To reopen a previously exported frame, its camera settings and dark reference, use `python3 -m beam_profiler.server --restore-snapshot path/to/beam-snapshot.zip`. The same camera or source recording must be available. Saved fits are recomputed from the restored pixels. It starts frozen, with the uncertainty window cleared; **Resume** collects new samples. Historical frames are never treated as fresh repeatability data.
 
 The application uses the open-source Aravis GenICam library rather than a vendor SDK such as Spinnaker, and does not modify any installed vendor software.
 
@@ -52,7 +52,8 @@ The application uses the open-source Aravis GenICam library rather than a vendor
 - Fixed-scale thermal/grayscale image, centroid crosshair, D4σ ellipse, draggable analysis ROI.
 - Intensity-weighted centroid, sensor-axis and principal-axis D4σ diameters, ellipticity and angle.
 - Single-frame uncertainty from rolling repeatability, optional correlated scale calibration, and an explicit partial uncertainty budget.
-- Integrated X/Y profiles, peak intensity, saturation and clipped-region warnings.
+- Integrated X/Y profiles, circular encircled-energy diameters (D50 and D86.5), peak intensity and image-quality warnings.
+- On-demand 2D Gaussian, super-Gaussian, Hermite–Gaussian and Laguerre–Gaussian intensity fits with signed residual maps.
 - Border background subtraction, adjustable noise threshold, averaged dark reference.
 - Freeze/resume and ZIP snapshot export containing raw TIFF, measurement JSON, profile CSVs, a plain-text details file and the inspection PNG. An active dark reference is included as float TIFF.
 - Session event log on disk and in the UI; raw-frame recording with SHA-256 manifest; replay of recordings through the same analysis.
@@ -72,7 +73,31 @@ Thresholding, residual background, truncation, saturation and spatially nonunifo
 
 **Auto exposure** is a one-shot adjustment, not the camera's mean-brightness auto mode (that stays disabled; it would saturate a small bright beam). It changes exposure only, keeping the gain, until the peak in the analysis ROI is 60–90% of full scale (target 75%). The peak is the 20th-brightest pixel, so a few hot pixels cannot set it. Each step discards one frame and evaluates the next. Exposure is scaled linearly above a low-percentile offset and divided by 4 while saturated, for at most 8 steps up to 1 s. If the camera limits are reached, the result says so (add ND or lower gain; raise gain or power). Like any exposure change, it clears the dark reference and the uncertainty window, so capture a new dark reference afterwards. The steps are logged.
 
-Dark references average 8 fresh frames after draining older frames. Block the beam before capture. Each dark reference (captured, restored or replayed) is analyzed like a beam frame; if it contains a beam-like signal, every measurement using it carries a warning, the value cards turn amber and uncertainty estimates are withheld. The built-in simulator cannot block its beam, so a simulator dark reference always shows this warning. Changing exposure/gain or switching cameras clears the reference. Capture requires exposure ≤1 s. Export after **Freeze** to retain the exact displayed frame; during live acquisition export uses the latest completed frame atomically.
+Dark references average 8 fresh frames after draining older frames. Block the beam before capture. Each dark reference (captured, restored or replayed) is analyzed like a beam frame; if it contains a beam-like signal, every measurement using it carries a warning, the value cards turn amber and uncertainty estimates are withheld. The built-in simulators cannot block their beams, so a simulator dark reference shows this warning. Changing exposure/gain or switching cameras clears the reference. Capture requires exposure ≤1 s. Export after **Freeze** to retain the exact displayed frame; during live acquisition export uses the latest completed frame atomically.
+
+### Encircled energy
+
+D50 and D86.5 are the smallest circular-aperture diameters about the measured centroid enclosing 50% and $1-e^{-2}$ (86.47%) of the corrected ROI signal. Each pixel's signal is assigned to its center. For an ideal circular Gaussian, D86.5 equals its $1/e^2$ diameter. The same aperture definition applies to rings, lobes and irregular spots. Background, threshold and clipping affect the enclosed fractions. The values use the D4σ length calibration and are outside its repeatability budget.
+
+## Transverse intensity fits
+
+Select a camera, replay or demo source. In **Transverse intensity fit**, choose a template or **Compare all models** and click **Freeze & fit**. On a frozen image you can refit different templates, inspect the signed residual and export the frame. **Resume** returns to acquisition. The fit requires a valid frame with a clear margin around the beam and no acquisition-quality warnings.
+
+The fitting coordinates $u,v$ are measured from a free center along rotated axes and divided by the radii $w_u,w_v$. Write $q=u^2+v^2$. Each model fits a nonnegative peak amplitude and a constant background. The shapes below are normalized to unit peak in the implementation.
+
+| Intensity template | Shape up to normalization | Parameter convention |
+| --- | --- | --- |
+| Gaussian | $\exp(-2q)$ | Elliptical $1/e^2$ intensity radii |
+| Super-Gaussian | $\exp(-2q^n)$ | Elliptical $1/e^2$ radii and order $1\le n\le 10$ |
+| HG₁₀ | $u^2\exp(-2q)$ | Two lobes along $u$. Rotation also covers HG₀₁ |
+| HG₁₁ | $u^2 v^2\exp(-2q)$ | Four lobes. Radii describe the Gaussian envelope |
+| LG, $p=0$, $\lvert\ell\rvert=1$ | $q\exp(-2q)$ | Circular envelope with one radius. The ring peaks at $w/\sqrt{2}$ |
+
+Both HG fits report envelope radii. Angles follow the image coordinate system (+x toward +y). The UI omits the angle of a circular ring or a Gaussian/super-Gaussian with less than 1% axis asymmetry. The latter threshold is a display convention. JSON retains the fitted angle for reconstructing an elliptical template.
+
+The optimizer uses native ROI samples after optional dark subtraction, retaining negative values. Moment settings supply initial estimates and quality checks. The fit estimates its own offset and fits the unthresholded data. For large ROIs it samples a finer grid around the beam and weights each sample by the pixel area it represents. The reported RMS in digital numbers (DN) and $R^2$ use **every native ROI pixel**. The signed residual is measured intensity minus prediction, including the fitted background. Red indicates excess light and blue a deficit. The preview averages pixels for display. The exported residual retains the native grid.
+
+Compare the same ROI across models. A large dark margin can dilute an RMS error, and the extra super-Gaussian parameter can give a small improvement even for Gaussian data. Spatial structure in the residual helps distinguish mismatch from camera noise. These are intensity-template fits at one plane. Optical phase, LG charge sign, coherent mode fractions and propagation $M^2$ require additional measurements. The software assigns no fit-parameter confidence intervals. [Hermite–Gaussian modes](https://www.rp-photonics.com/hermite_gaussian_modes.html) · [Laguerre–Gaussian modes](https://www.rp-photonics.com/laguerre_gaussian_modes.html)
 
 ## Uncertainty estimates
 
@@ -107,6 +132,7 @@ Recording stops automatically at 5000 frames or below 2 GB free disk space; at f
 | `dark-reference.tiff` | Averaged dark reference as 32-bit float, only if active |
 | `measurement.json` | UTC timestamp, camera model/serial/format/exposure/gain, analysis settings, all metrics and warnings, full uncertainty result with covariance matrices and field order |
 | `profile_x.csv`, `profile_y.csv` | `position_px,integrated_intensity_dn` over the analysis ROI |
+| `fit-residual.tiff` | Present after fitting. Signed float32 DN, in the native ROI, for the lowest-RMS candidate. The ROI origin, model parameters for all candidates, calibrated length per pixel and scores are in `measurement.json` under `fit`. |
 | `uncertainty-samples.csv` | The exact timestamped per-frame values in the current statistics window |
 | `details.txt` | Plain-text (UTF-8) summary: time, camera and serial, format, exposure/gain, scale, ROI, background/threshold/dark settings, all results with uncertainties, warnings, method and software version |
 | `inspection.png` | The same sheet as **Save PNG** |

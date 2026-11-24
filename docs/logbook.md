@@ -2,6 +2,13 @@
 
 Consequential changes and how they were validated. Newest first.
 
+## 2026-11-24 · 0.5.0 · Transverse intensity fits and encircled energy
+
+- Added frozen-frame fits for Gaussian, super-Gaussian, HG₁₀, HG₁₁ and circular LG ring intensities. Comparison uses full-ROI RMS. The dashboard and inspection sheet show the signed residual, and the ZIP contains the native float32 residual and fitted parameters.
+- Added live D50 and D86.5 circular-aperture diameters and four non-Gaussian simulator sources. Frozen replay retains its frame and dark-reference provenance during reanalysis. Restoring a replay snapshot checks the frame against the recording.
+- Validated against independent noisy images of known geometry, a small off-center ring on a large sensor, and encircled-energy integrals. Simulator browser checks covered comparison, single-template refitting, mobile layout, export and resume. Physical-camera validation of these additions is pending.
+- Fit seeds and the dense sampling window come from an iterated ±1.5 D4σ window about the brightest region, not whole-ROI moments. On a full 1440 × 1080 frame at the default 3σ threshold, isolated noise pixels inflated whole-ROI D4σ to about 480 px for an 8 px-radius spot, which biased the fit, or stopped a 3 px spot from converging. Whole-ROI D4σ itself is unchanged and remains threshold-sensitive on large ROIs.
+
 ## 2026-09-24 · 0.4.0 · One-shot auto exposure
 
 - Added software auto exposure aimed at a 75% peak in the analysis ROI (accepted 60–90%), at fixed gain. The camera's mean-brightness ExposureAuto stays disabled because it saturates small bright beams, which was the failure in the first real frame (30 ms, 5 dB, 6.3% saturated).

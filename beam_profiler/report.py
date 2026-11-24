@@ -45,7 +45,8 @@ def with_uncertainty(value, u):
 
 def measurement(snap):
     """The measurement.json record for a snapshot."""
-    return {"timestamp": snap.packet["timestamp"], "software": {"name": "beam-profiler",
+    return {**({"fit": snap.fit.summary} if snap.fit is not None else {}),
+            "timestamp": snap.packet["timestamp"], "software": {"name": "beam-profiler",
             "version": __version__, "repository": REPOSITORY},
             "camera": snap.camera, "settings": snap.settings, "metrics": snap.metrics,
             "uncertainty": snap.packet["uncertainty"], "dark_active": snap.dark is not None,
@@ -118,6 +119,30 @@ def details_text(snap, palette="thermal"):
         f"Uncertainty        {u['status']}; {u['sample_count']} of {u['window_frames']} frames"
         f" over {u['duration_s']:.1f} s; unspecified calibration inputs: {missing}",
     ]
+    energy = m["encircled_energy"]
+    if energy:
+        lines += [f"Encircled energy    D50 {energy['d50']:.5g} {unit} | D86.5 {energy['d86_5']:.5g} {unit}",
+                  "  Circular apertures about the measured centroid. Uncertainties unestimated."]
+    if snap.fit is not None:
+        fit = snap.fit.summary
+        lines += ["", "TRANSVERSE INTENSITY FIT (single frame, unweighted native-pixel RMS)",
+                  f"Requested: {fit['requested']} | {fit['sample_pixels']} solver samples, "
+                  f"{fit['roi_pixels']} ROI pixels scored"]
+        for row in fit["candidates"]:
+            lines.append(f"  {row['label']}: RMS {row['rmse_dn']:.5g} DN, R² {row['r_squared']:.6g}")
+        best = fit["candidates"][0]
+        scale = m["scale"]
+        lines += [f"Lowest RMS: {best['label']} | center ({best['center_x_px']:.3f}, {best['center_y_px']:.3f}) px",
+                  f"  Envelope radii u/v: {best['radius_u_px'] * scale:.5g} / "
+                  f"{best['radius_v_px'] * scale:.5g} {unit}",
+                  f"  Peak above offset: {best['peak_above_offset_dn']:.5g} DN | offset: {best['offset_dn']:.5g} DN"]
+        if best["angle_resolved"]:
+            lines.append(f"  u-axis angle: {best['angle_deg']:.4g} degrees")
+        if best["order"] is not None:
+            lines.append(f"  Super-Gaussian exponent order: {best['order']:.5g} (range 1 to 10)")
+        if fit["failed_models"]:
+            lines.append("Unresolved fits: " + ", ".join(fit["failed_models"]))
+        lines.append("Residual = dark-corrected data minus fitted intensity, including the fitted offset.")
     notes = list(m["warnings"]) + list(u.get("warnings") or [])
     lines += [""] + [f"Warning: {w}" for w in notes] if notes else []
     lines += ["",
@@ -154,6 +179,16 @@ def _profile(draw, box, values, start, label, color, font):
     draw.text((right - draw.textlength(end, font=font), bottom + 4), end, fill=(90, 100, 112), font=font)
 
 
+def residual_preview(residual):
+    """Signed ROI preview. White is zero, blue is negative, red is positive."""
+    limit = float(np.max(np.abs(residual)))
+    small = Image.fromarray(residual)
+    small.thumbnail((400, 240), Image.Resampling.BOX)
+    level = np.clip(np.asarray(small) / (limit or 1.), -1., 1.)
+    rgb = np.stack((1 + np.minimum(level, 0), 1 - np.abs(level), 1 - np.maximum(level, 0)), axis=-1)
+    return Image.fromarray(np.rint(255 * rgb).astype(np.uint8)), limit
+
+
 def inspection_png(snap, palette="thermal"):
     """Image, overlays, profiles and the plain-text record on one PNG sheet."""
     if palette not in PALETTES:
@@ -185,6 +220,10 @@ def inspection_png(snap, palette="thermal"):
                      for line in text.splitlines())
     profile_height = 150
     left_height = image.height + gap + profile_height + 40
+    residual_image = None
+    if snap.fit is not None:
+        residual_image, limit = residual_preview(snap.fit.residual)
+        left_height += residual_image.height + 46
     width = int(margin + image.width + gap + text_width + margin)
     height = int(margin + max(left_height, line_height * len(text.splitlines())) + margin)
     sheet = Image.new("RGB", (width, height), (255, 255, 255))
@@ -196,6 +235,11 @@ def inspection_png(snap, palette="thermal"):
              "X integrated profile (normalized)", (40, 140, 190), small)
     _profile(draw, (margin + half + gap, top, margin + image.width, top + profile_height), snap.profile_y,
              m["roi"][1], "Y integrated profile (normalized)", (120, 90, 210), small)
+    if residual_image is not None:
+        y = top + profile_height + 42
+        draw.text((margin, y), f"ROI residual (DN): blue {-limit:.3g} | white 0 | red +{limit:.3g}",
+                  fill=(40, 48, 58), font=small)
+        sheet.paste(residual_image, (margin, y + 22))
     for i, line in enumerate(text.splitlines()):
         draw.text((margin + image.width + gap, margin + i * line_height), line, fill=(25, 32, 40), font=body)
 

@@ -7,6 +7,30 @@ these are practical estimates, not a certified ISO 11146 measurement system.
 import numpy as np
 
 
+def _encircled_diameters(signal, cx, cy, scale):
+    """Smallest centroid-centered circles containing each specified signal fraction.
+
+    Pixel centers carry the corrected pixel integrals. Find the crossing in
+    one-pixel annuli, then sort just the crossing annulus for the exact radius.
+    """
+    y, x = np.nonzero(signal)
+    flux = signal[y, x]
+    radii = np.hypot(x - cx, y - cy)
+    annuli = radii.astype(np.intp)
+    cumulative = np.cumsum(np.bincount(annuli, weights=flux))
+    diameters = {}
+    for name, fraction in [("d50", .5), ("d86_5", 1 - np.exp(-2))]:
+        target = fraction * cumulative[-1]
+        shell = int(np.searchsorted(cumulative, target))
+        inside = cumulative[shell-1] if shell else 0.
+        select = annuli == shell
+        distances = radii[select]
+        order = np.argsort(distances)
+        index = np.searchsorted(np.cumsum(flux[select][order]), target - inside)
+        diameters[name] = float(2 * scale * distances[order[min(index, len(order) - 1)]])
+    return diameters
+
+
 def analyze(pixels, maximum, *, pixel_pitch_um=None, magnification=1., roi=None,
             subtract_border=True, noise_sigma=3., dark=None):
     height, width = pixels.shape
@@ -49,7 +73,7 @@ def analyze(pixels, maximum, *, pixel_pitch_um=None, magnification=1., roi=None,
                "roi": [x0, y0, x1, y1], "signal_sum_dn": total,
                "centroid_x_px": None, "centroid_y_px": None,
                "diameter_x": None, "diameter_y": None, "major": None, "minor": None,
-               "angle_deg": None, "ellipticity": None}
+               "angle_deg": None, "ellipticity": None, "encircled_energy": None}
     # Sensor noise varies pixel to pixel; beam wings, stray light and fringes vary
     # smoothly along the border. A spread far above the neighbour-difference noise
     # means the border is not dark, so the background and threshold remove beam signal.
@@ -70,6 +94,7 @@ def analyze(pixels, maximum, *, pixel_pitch_um=None, magnification=1., roi=None,
         angle = float(np.degrees(np.arctan2(eigenvectors[1, 1], eigenvectors[0, 1])))
         angle = (angle + 90) % 180 - 90
         metrics.update(centroid_x_px=cx, centroid_y_px=cy,
+                       encircled_energy=_encircled_diameters(signal, cx-x0, cy-y0, scale),
                        diameter_x=float(4 * np.sqrt(vx) * scale),
                        diameter_y=float(4 * np.sqrt(vy) * scale),
                        major=float(major), minor=float(minor), angle_deg=angle,

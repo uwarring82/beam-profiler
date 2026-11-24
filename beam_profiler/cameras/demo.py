@@ -3,6 +3,16 @@ import time
 import numpy as np
 
 from .base import Frame
+from ..fitting import MODELS, intensity
+
+
+DEMO_MODELS = {"demo": "gaussian", **{"demo:" + k: k for k in MODELS if k != "gaussian"}}
+
+
+def demo_devices():
+    return [{"id": device, "model": f"{MODELS[model]} beam simulator", "vendor": "Demo",
+             "serial": "SIMULATED", "transport": "Synthetic", "driver": "demo", "available": True}
+            for device, model in DEMO_MODELS.items()]
 
 
 class DemoCamera:
@@ -12,7 +22,8 @@ class DemoCamera:
         self.y, self.x = np.mgrid[:720, :960]
 
     def open(self, device_id="demo"):
-        self.info = {"id": "demo", "driver": "demo", "model": "Gaussian beam simulator",
+        self.mode = DEMO_MODELS[device_id]
+        self.info = {"id": device_id, "driver": "demo", "model": f"{MODELS[self.mode]} beam simulator",
                      "vendor": "Demo", "serial": "SIMULATED", "width": 960, "height": 720,
                      "pixel_format": "Mono12", "pixel_pitch_um": 3.45, "simulated": True,
                      "exposure_us": 10000., "gain_db": 0.,
@@ -25,7 +36,7 @@ class DemoCamera:
         dx, dy = self.x - 480 - 4 * np.sin(t / 4), self.y - 350 - 3 * np.cos(t / 5)
         u, v = .94 * dx + .342 * dy, -.342 * dx + .94 * dy
         amplitude = 3100 * self.info["exposure_us"] / 10000 * 10 ** (self.info["gain_db"] / 20)
-        signal = amplitude * np.exp(-2 * ((u / 125) ** 2 + (v / 91) ** 2))
+        signal = amplitude * intensity(self.mode, u / 125, v / (125 if self.mode == "lg01" else 91), order=3.)
         pixels = np.clip(30 + signal + self.rng.normal(0, 1.5, signal.shape), 0, 4095).astype(np.uint16)
         return Frame(pixels, 4095, "Mono12")
 
