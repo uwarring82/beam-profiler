@@ -74,6 +74,13 @@ class ReplayCamera:
         return Frame(pixels, int(row["maximum_dn"]), row["pixel_format"], timestamp=row["timestamp"],
                      dark=dark, restart=restart)
 
+    def read_recorded(self, number):
+        """Read a named frame, leaving replay ready to resume at its successor."""
+        if type(number) is not int or not 1 <= number <= len(self.rows):
+            raise ValueError("Invalid recorded frame number in snapshot.")
+        self.index, self.previous = number - 1, None
+        return self.read()
+
     def configure(self, exposure_us, gain_db):
         raise ValueError("Exposure and gain are fixed in a recording.")
 

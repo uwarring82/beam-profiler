@@ -143,3 +143,25 @@ def test_no_sessions_folder_keeps_log_in_memory():
             p.request("record", {"recording": True})
     finally:
         p.close()
+
+
+def test_frozen_replay_fit_keeps_recorded_provenance_and_restores(session):
+    p, _ = session
+    p.request("record", {"recording": True})
+    recording = p.status()["recording"]["name"]
+    wait(lambda: p.status()["recording"]["frames"] >= 4)
+    p.request("record", {"recording": False})
+    p.request("connect", {"id": "replay:" + recording})
+    wait(p.packet)
+    p.request("pause", {"paused": True})
+    before = p.snapshot
+    time.sleep(.25)
+    p.request("analysis", {"magnification": 2})
+    p.request("fit", {"model": "gaussian"})
+    archive = p.export()
+    original_fit = p.packet()["fit"]
+    assert p.snapshot.camera["replay"] == before.camera["replay"]
+    p.request("restore_snapshot", {"archive": archive})
+    assert p.status()["paused"] and p.packet()["timestamp"] == before.packet["timestamp"]
+    assert p.packet()["fit"] == original_fit and p.snapshot.camera["replay"] == before.camera["replay"]
+    np.testing.assert_array_equal(p.snapshot.pixels, before.pixels)

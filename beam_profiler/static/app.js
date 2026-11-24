@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id);
 let state = null, packet = null, busy = false, roiMode = false, drag = null, image = null;
+let fitPending = false, fitError = '';
 let frameKey = '', drawBounds = null, pollFailures = 0, logSeq = 0, logBusy = false;
 const offscreen = document.createElement('canvas');
 const ctx = $('beam-canvas').getContext('2d');
@@ -30,17 +31,22 @@ function message(text) { $('message').textContent = text || ''; $('message').hid
 async function action(name, data = {}) {
   if (busy) return;
   busy = true;
+  fitError = '';
   message(name === 'dark' && !data.clear ? 'Acquiring dark reference. Keep the beam blocked until this message disappears…' :
     name === 'auto_exposure' ? 'Adjusting exposure…' : '');
   renderState();
   try {
+    if (name === 'fit' && !state.paused) state = await api('pause', {paused: true});
     state = await api(name, data);
     syncFields();
     message(state.error || (name === 'auto_exposure' ? state.auto_exposure?.message : '') || '');
     const latest = await api('frame');
     if (latest) await acceptFrame(latest);
     else clearFrame();
-  } catch (error) { message(error.message); }
+  } catch (error) {
+    if (name === 'fit') fitError = error.message;
+    message(error.message);
+  }
   finally { busy = false; renderState(); }
 }
 
@@ -64,7 +70,11 @@ function syncFields() {
   $('u-pitch').value = uncertainty.pixel_pitch_u_um ?? '';
   $('u-mag').value = uncertainty.magnification_u ?? '';
   $('u-correlation').value = uncertainty.scale_correlation ?? 0;
-  const options = state.devices.map(d => ({value: d.id, text: d.id === 'demo' ? 'Demo · Gaussian beam' : `${d.vendor} · ${d.serial}`}));
+  if ($('fit-model').options.length === 1) {
+    for (const [key, label] of Object.entries(state.fit_models)) $('fit-model').add(new Option(label, key));
+  }
+  const options = state.devices.map(d => ({value: d.id, text: d.driver === 'demo' ?
+    'Demo · ' + d.model.replace(' simulator', '') : `${d.vendor} · ${d.serial}`}));
   const previous = $('camera-select').value;
   $('camera-select').replaceChildren(...options.map(d => new Option(d.text, d.value)));
   if (options.some(d => d.value === previous)) $('camera-select').value = previous;
@@ -98,6 +108,13 @@ function renderState() {
   $('reset-statistics').disabled = !connected || busy;
   $('uncertainty-form').querySelector('button').disabled = busy;
   $('export').disabled = $('save-png').disabled = !packet || busy;
+  $('run-fit').disabled = busy || !connected || !packet?.metrics.valid || !!packet.metrics.warnings.length;
+  $('fit-model').disabled = busy;
+  $('run-fit').textContent = paused ? 'Fit frozen frame' : 'Freeze & fit';
+  $('fit-hint').textContent = fitPending ? 'Fitting the frozen frame…' :
+    fitError ? fitError : !packet ? 'Connect a source to fit a frame.' : !packet.metrics.valid || packet.metrics.warnings.length ?
+    'Resolve the image-quality warning above before fitting.' : paused ?
+    'The fit uses the frozen frame and its current ROI.' : 'Fitting freezes the current frame. Resume when you are ready to acquire again.';
   $('pause').textContent = paused ? '▶ Resume' : 'Ⅱ Freeze';
   $('dark-state').textContent = state?.dark_active ? 'ACTIVE · 8 FRAMES' : 'NONE';
   $('format').textContent = state?.camera?.pixel_format || '—';
@@ -124,12 +141,14 @@ function clearFrame() {
   $('quality-detail').textContent = 'Measurements use native camera pixels. The preview is scaled for display.';
   document.querySelector('.quality').classList.remove('warn');
   document.querySelector('.metric-grid').classList.remove('warn');
+  $('encircled-energy').textContent = 'D50 / D86.5 —';
+  renderFit(null);
   renderUncertainty(null);
   draw(); drawProfile('x', null); drawProfile('y', null);
 }
 
 async function acceptFrame(next) {
-  const key = `${next.id}:${next.timestamp}:${JSON.stringify(next.metrics)}:${JSON.stringify(next.uncertainty)}`;
+  const key = `${next.id}:${next.timestamp}:${JSON.stringify(next.metrics)}:${JSON.stringify(next.uncertainty)}:${JSON.stringify(next.fit)}`;
   if (key === frameKey) return;
   const img = new Image(); img.src = 'data:image/png;base64,' + next.image;
   await img.decode();
@@ -158,8 +177,53 @@ async function acceptFrame(next) {
   $('quality-title').textContent = !m.valid ? 'No clear beam detected' : warnings.length ? 'Check measurement conditions' : 'Intensity signal detected';
   $('quality-detail').textContent = warnings.length ? warnings.join(' ') :
     'D4σ from background-corrected intensity moments. Threshold and ROI affect the measured beam width.';
+  const energy = m.encircled_energy;
+  $('encircled-energy').textContent = energy ?
+    `D50 ${fmt(energy.d50)} · D86.5 ${fmt(energy.d86_5)} ${m.unit}` : 'D50 / D86.5 —';
+  $('encircled-energy').classList.toggle('warn', warnings.length > 0);
+  renderFit(packet);
   renderUncertainty(packet.uncertainty);
   draw(); drawProfile('x', packet.profile_x); drawProfile('y', packet.profile_y); renderState();
+}
+
+$('run-fit').onclick = async () => {
+  fitPending = true;
+  try { await action('fit', {model: $('fit-model').value}); }
+  finally { fitPending = false; renderState(); }
+};
+
+function renderFit(frame) {
+  const fit = frame?.fit;
+  $('fit-result').hidden = !fit;
+  if (!fit) {
+    $('fit-residual').removeAttribute('src');
+    return;
+  }
+  const best = fit.candidates[0], scale = fit.length_per_px;
+  $('fit-name').textContent = fit.requested === 'compare' ? 'Lowest full-ROI RMS · ' + best.label : best.label;
+  const radii = [best.radius_u_px, best.radius_v_px].map(r => fmt(r * scale, 2)).join(' / ');
+  const parameters = [`Envelope radii u/v ${radii} ${fit.unit}`,
+    `center (${fmt(best.center_x_px)}, ${fmt(best.center_y_px)}) px`];
+  if (best.angle_resolved) parameters.push(`u-axis ${fmt(best.angle_deg)}°`);
+  if (best.order != null) parameters.push(`order ${fmt(best.order, 3)} (range 1–10)`);
+  $('fit-geometry').textContent = parameters.join(' · ');
+  $('fit-levels').textContent = `Peak above offset ${fmt(best.peak_above_offset_dn)} DN · offset ${fmt(best.offset_dn, 2)} DN`;
+  $('fit-rows').replaceChildren(...fit.candidates.map(row => {
+    const tr = document.createElement('tr');
+    for (const text of [row.label, fmt(row.rmse_dn, 3), fmt(row.r_squared, 5)]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.append(td);
+    }
+    return tr;
+  }));
+  $('fit-residual').src = 'data:image/png;base64,' + frame.fit_residual_png;
+  const limit = fmt(frame.fit_residual_limit_dn, 2);
+  $('fit-legend').textContent = `Blue −${limit} DN · white 0 · red +${limit} DN`;
+  const notes = ['Residual = dark-corrected data minus model. Structured lobes indicate a mismatch even when R² is high.'];
+  if (fit.requested === 'compare') notes.push('RMS ranks intensity agreement. The super-Gaussian includes the Gaussian at order 1.');
+  if (fit.failed_models.length) notes.push('Unresolved fits: ' + fit.failed_models.join(', ') + '.');
+  $('fit-interpretation').textContent = notes.join(' ');
 }
 
 const uncertaintyFields = [
@@ -311,7 +375,7 @@ $('save-png').onclick=()=>download('png','beam-inspection','png');
 function dialog(title,html){$('dialog-title').textContent=title;$('dialog-content').innerHTML=html;$('info-dialog').showModal();}
 const measurementNotes=`<p><strong>D4σ diameter</strong> is four times the intensity-weighted standard deviation. For an ideal Gaussian it equals the 1/e² diameter. The ellipse shows principal-axis D4σ diameters; X and Y cards show sensor-axis widths.</p><p><strong>Background and noise.</strong> The median of the ROI border is subtracted when enabled. Signal below the selected multiple of border noise is excluded; noise uses a robust deviation estimate that also handles black-clipped pixels. A dark reference averages 8 blocked-beam frames and is cleared when camera settings change. Thresholds can exclude weak beam tails and change second moments.</p><p><strong>Calibration.</strong> Physical scale = pixel pitch ÷ optical magnification. At 1× the result is in the sensor plane. Unknown cameras use pixels until a pitch is entered. Centroids use the delivered image’s pixel coordinates.</p><p><strong>Profiles</strong> sum corrected intensity along each axis and are independently normalized for display. The preview uses a fixed full-scale intensity mapping.</p><p><strong>Auto exposure</strong> adjusts exposure once, at the current gain, until the brightest pixels in the analysis region reach about 75% of full scale (accepted 60–90%). A few hot pixels are ignored. It clears the dark reference: capture a new one afterwards.</p><p><strong>Session log and replay.</strong> Every server run writes a timestamped event log (connections, settings, dark references, recordings, exports, errors and image-quality changes) to <code>sessions/session-…/log.jsonl</code>. <strong>Record raw frames</strong> saves each analyzed live frame as native TIFF with a SHA-256 manifest. Recordings appear in the camera list after recording or rescanning; replay loops them with their original timestamps, exposure, gain and dark references through the same analysis.</p><p><strong>Export raw data</strong> saves a ZIP with the native-bit-depth TIFF, measurement metadata, full-resolution X/Y profile CSVs, a plain-text details file and the inspection PNG. <strong>Save PNG</strong> saves only the inspection sheet: image with overlays, profiles and all settings and results as plain text, also embedded as PNG text metadata. Measure from the raw TIFF, not the PNG. Freeze before saving to retain a particular frame. These are practical beam estimates, not certified ISO 11146 results.</p>`;
 $('help').onclick=$('method-help').onclick=()=>dialog('About the measurements',measurementNotes+`<p><strong>Uncertainty.</strong> Live values are single-frame measurements. The rolling sample standard deviation s (N−1 denominator) estimates their temporal spread, including beam motion. It is not divided by √N. Known calibration contributions are combined in quadrature, including a common scale covariance with input correlation ρ. Unknown contributions are visibly omitted from a partial budget. Near-circular axis angles and unresolved variation receive no error bar. Export includes the exact window samples and covariance matrices.</p><p>Standard uncertainties use k = 1; no coverage probability or confidence interval is implied. The <a href="https://physics.nist.gov/cuu/Uncertainty/combination.html" target="_blank" rel="noopener">NIST uncertainty guidance</a> describes covariance propagation and its assumptions.</p>`);
-$('models').onclick=()=>dialog('Camera support',`<p>Camera acquisition is separate from beam analysis, so additional drivers and model calibrations can be added independently.</p><div class="model-row"><strong>FLIR Firefly FFY-U3-16S2M-DL</strong><span>Verified on this computer · USB3 Vision</span><p>1440 × 1080 monochrome · 3.45 µm pixel pitch · exposure and gain control · Mono16 acquisition.</p></div><div class="model-row"><strong>Other GenICam cameras</strong><span>Aravis adapter · device-dependent support</span><p>Discovery supports USB3 Vision and GigE Vision. This version requires Mono8, Mono10, Mono12 or Mono16. Other models need hardware validation and pixel-pitch calibration.</p></div><div class="model-row"><strong>Gaussian beam simulator</strong><span>Included · no hardware needed</span><p>A moving elliptical beam for exploring the UI and testing the analysis.</p></div>`);
+$('models').onclick=()=>dialog('Camera support',`<p>Camera acquisition is separate from beam analysis, so additional drivers and model calibrations can be added independently.</p><div class="model-row"><strong>FLIR Firefly FFY-U3-16S2M-DL</strong><span>Verified on this computer · USB3 Vision</span><p>1440 × 1080 monochrome · 3.45 µm pixel pitch · exposure and gain control · Mono16 acquisition.</p></div><div class="model-row"><strong>Other GenICam cameras</strong><span>Aravis adapter · device-dependent support</span><p>Discovery supports USB3 Vision and GigE Vision. This version requires Mono8, Mono10, Mono12 or Mono16. Other models need hardware validation and pixel-pitch calibration.</p></div><div class="model-row"><strong>Beam simulators</strong><span>Included · no hardware needed</span><p>Moving Gaussian, super-Gaussian, two-lobe, four-lobe and ring profiles with camera noise.</p></div>`);
 $('close-dialog').onclick=()=>$('info-dialog').close();
 $('info-dialog').addEventListener('click',e=>{if(e.target===$('info-dialog'))$('info-dialog').close();});
 new ResizeObserver(()=>{draw();drawProfile('x',packet?.profile_x);drawProfile('y',packet?.profile_y);}).observe($('stage'));

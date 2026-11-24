@@ -111,3 +111,27 @@ def test_beam_wider_than_the_roi_is_not_mistaken_for_background():
 def test_dark_or_noisy_borders_are_not_flagged(pixels):
     m, _, _ = analyze(pixels, 65535)
     assert not any("border is not dark" in w for w in m["warnings"])
+
+
+def test_encircled_signal_diameters_follow_circular_gaussian():
+    y, x = np.mgrid[:180, :200]
+    radius = 23.
+    data = 17 + 5000*np.exp(-2*((x-95.2)**2 + (y-82.7)**2)/radius**2)
+    metrics, *_ = analyze(data.round(), 65535, roi=[23, 12, 170, 160],
+                          pixel_pitch_um=3., magnification=2.)
+    ee = metrics["encircled_energy"]
+    assert ee["d50"] == pytest.approx(radius * np.sqrt(2*np.log(2)) * 1.5, abs=.4)
+    assert ee["d86_5"] == pytest.approx(2 * radius * 1.5, abs=.4)
+
+
+def test_encircled_energy_matches_pixel_aperture_for_asymmetric_lobes():
+    frame = np.zeros((60, 80), dtype=np.uint16)
+    frame[20:26, 20:29] = 30
+    frame[35:43, 43:50] = 75
+    m, *_ = analyze(frame, 255, roi=[10, 8, 70, 55])
+    y, x = np.indices(frame.shape)
+    r = np.hypot(x - m["centroid_x_px"], y - m["centroid_y_px"])
+    for name, fraction in [("d50", .5), ("d86_5", 1-np.exp(-2))]:
+        radius = m["encircled_energy"][name] / 2
+        assert frame[r < radius - 1e-10].sum() < frame.sum() * fraction
+        assert frame[r <= radius + 1e-10].sum() >= frame.sum() * fraction

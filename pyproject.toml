@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beam-profiler"
-version = "0.4.0"
-description = "Local laser beam profiler: GenICam camera acquisition via Aravis, D4σ moment analysis and a documented partial uncertainty budget."
+version = "0.5.0"
+description = "Local laser beam profiler: GenICam camera acquisition via Aravis, D4σ moments, encircled energy and transverse intensity fits."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Ulrich Warring"}]
 requires-python = ">=3.11"
-dependencies = ["numpy>=2.0,<3", "Pillow>=11,<13"]
+dependencies = ["numpy>=2.0,<3", "Pillow>=11,<13", "scipy>=1.13,<2"]
 keywords = ["beam profiling", "laser", "D4sigma", "ISO 11146", "GenICam", "Aravis", "measurement uncertainty"]
 classifiers = [
     "Development Status :: 3 - Alpha",

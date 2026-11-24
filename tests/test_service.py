@@ -227,3 +227,76 @@ def test_blocked_dark_reference_is_accepted_silently():
         assert p.status()["dark_active"] and p.dark_warning is None
     finally:
         p.close()
+
+
+def test_fit_attaches_to_exact_frame_and_round_trips_in_export(profiler):
+    p = profiler
+    p.request("connect", {"id": "demo:hg10"})
+    wait_frame(p)
+    with pytest.raises(ValueError, match="Freeze"):
+        p.request("fit")
+    p.request("pause", {"paused": True})
+    before = p.packet()
+    p.request("fit", {"model": "hg10"})
+    after = p.packet()
+    assert after["timestamp"] == before["timestamp"] and after["metrics"] == before["metrics"]
+    assert after["uncertainty"] == before["uncertainty"]
+    data = p.export()
+    with zipfile.ZipFile(BytesIO(data)) as z:
+        m = json.loads(z.read("measurement.json"))
+        assert m["fit"] == after["fit"]
+        assert m["camera"]["id"] == "demo:hg10" and m["timestamp"] == before["timestamp"]
+        residual = np.array(Image.open(BytesIO(z.read("fit-residual.tiff"))))
+        assert residual.dtype == np.float32
+        np.testing.assert_array_equal(residual, p.snapshot.fit.residual)
+        # Independently reconstruct the signed error in native sensor coordinates.
+        row = m["fit"]["candidates"][0]
+        y, x = np.indices(residual.shape)
+        dx, dy = x - row["center_x_px"], y - row["center_y_px"]
+        theta = np.radians(row["angle_deg"])
+        a = (dx*np.cos(theta) + dy*np.sin(theta)) / row["radius_u_px"]
+        b = (-dx*np.sin(theta) + dy*np.cos(theta)) / row["radius_v_px"]
+        expected = row["offset_dn"] + row["peak_above_offset_dn"] * 2*a*a * np.exp(1-2*(a*a+b*b))
+        np.testing.assert_allclose(residual, p.snapshot.pixels - expected, atol=1e-6)
+        png = Image.open(BytesIO(z.read("inspection.png")))
+        assert "TRANSVERSE INTENSITY FIT" in png.text["Description"]
+        assert json.loads(png.text["measurement.json"]) == m
+    p.request("restore_snapshot", {"archive": data})
+    assert p.packet()["fit"] == after["fit"]
+    assert p.packet()["uncertainty"]["sample_count"] == 0
+    p.request("analysis", {"magnification": 2})
+    assert "fit" not in p.packet()
+    assert "fit-residual.tiff" not in zipfile.ZipFile(BytesIO(p.export())).namelist()
+    p.request("fit", {"model": "hg10"})
+    p.request("pause", {"paused": False})
+    assert "fit" not in wait_frame(p, after["id"])
+
+
+def test_fit_cannot_attach_to_a_superseded_roi(profiler, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from beam_profiler import service
+
+    wait_frame(profiler)
+    profiler.request("pause", {"paused": True})
+    entered, proceed = Event(), Event()
+    original = service.fit_frame
+
+    def delayed(*args):
+        entered.set()
+        assert proceed.wait(5)
+        return original(*args)
+
+    monkeypatch.setattr(service, "fit_frame", delayed)
+    with ThreadPoolExecutor(1) as pool:
+        running = pool.submit(profiler.request, "fit", {"model": "gaussian"})
+        assert entered.wait(5)
+        try:
+            with pytest.raises(ValueError, match="already running"):
+                profiler.request("fit", {"model": "hg10"})
+            profiler.request("analysis", {"roi": [50, 40, 920, 650]})
+        finally:
+            proceed.set()
+        with pytest.raises(ValueError, match="settings changed"):
+            running.result(timeout=5)
+    assert "fit" not in profiler.packet()
