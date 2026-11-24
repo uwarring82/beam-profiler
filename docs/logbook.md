@@ -2,7 +2,9 @@
 
 Consequential changes and how they were validated. Newest first.
 
-- 2026-11-24 · WP 1 added the [student entrance](../start/index.html) and five task routes. A touch-emulated lens drag at 390 px changed the overlap with the marker and readout in view.
+## 2026-11-24 · WP 1 · Student entrance
+
+- Added the [student entrance](../start/index.html) and five task routes. A touch-emulated lens drag at 390 px changed the overlap with the marker and readout in view.
 
 ## 2026-11-24 · Work programme for a student entrance page
 

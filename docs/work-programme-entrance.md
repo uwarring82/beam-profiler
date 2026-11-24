@@ -152,7 +152,7 @@ Do them in order. Each one is a pull request with screenshots at 1280 px and 390
 | WP | Deliverable | Accepted when |
 | --- | --- | --- |
 | 1 | Landing page and design frame | Passes the design review gate. The live action works on a phone. All five entry questions lead to a page, a stub if need be. |
-| 2 | Layer cards 0–2 | Each card has every element in section 2.1. Every deep link opens the stated tool state. |
+| 2 | Layer cards 0–2 | Each card has every element in section 2.1, including a skip self-check, common traps and what the layer cannot settle. Every deep link opens the stated tool state. From “Focus a beam onto a target”, the Layer 1 action opens the simulator with “Specified waist in air” already selected. |
 | 3 | Loop, trade-off examples, decision-log template | The loop is on the landing page with a text equivalent. Each trade-off row links to a place in a tool where the student can see it. |
 | 4 | macOS install card; Linux and Windows cards marked "validation pending" | The four-step ladder works on a clean Mac. Pending cards say so in their first line. |
 | 5 | CI checks | A test opens every internal link, loads every exercise through the app's validator, and asserts every number quoted on a card against the tools. Stage B runs on Ubuntu, macOS and Windows runners. |
