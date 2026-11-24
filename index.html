@@ -9,7 +9,7 @@
 <body>
 <header class="top"><div class="top-inner">
   <a class="brand" href="./" aria-label="Beam Lab home"><span class="mark" aria-hidden="true"></span>Beam Lab</a>
-  <nav aria-label="Main navigation"><a href="#workspace" class="current">Workspace</a><a href="https://github.com/uwarring82/beam-profiler#measurement-conventions">Methods</a><a href="https://github.com/uwarring82/beam-profiler#run">Camera setup</a></nav>
+  <nav aria-label="Main navigation"><a href="#workspace" class="current" aria-current="page">Profiler</a><a href="./beam-path/">Beam path</a><a href="https://github.com/uwarring82/beam-profiler#measurement-conventions">Methods</a><a href="https://github.com/uwarring82/beam-profiler#run">Camera setup</a></nav>
 </div></header>
 <main id="workspace">
   <div class="intro"><div><h1>Beam profiler</h1><p>Explore a sample or measure your own camera frame.</p></div>
@@ -36,7 +36,7 @@
   <section class="fit-block">
     <div class="section-title"><div><h2>Intensity fit</h2><p>Compare how well transverse intensity models describe this frame.</p></div>
     <div class="fit-controls"><select id="model" aria-label="Intensity model"><option value="compare">Compare all models</option></select><button id="fit" class="button dark" disabled>Run fit</button></div></div>
-    <div id="fit-output" hidden><h3 id="fit-name"></h3><p id="fit-info"></p><p id="fit-note"></p><div class="scroll"><table><thead><tr><th>Model</th><th>RMS residual (DN)</th><th>R²</th></tr></thead><tbody id="fit-rows"></tbody></table></div><button id="save-residual" class="button quiet">Download residual TIFF</button></div>
+    <div id="fit-output" hidden><h3 id="fit-name"></h3><p id="fit-info"></p><p id="fit-note"></p><div class="scroll"><table><thead><tr><th>Model</th><th>RMS residual (DN)</th><th>R²</th></tr></thead><tbody id="fit-rows"></tbody></table></div><button id="save-residual" class="button quiet">Download residual TIFF</button> <a id="launch-path" class="button quiet" hidden>Use Gaussian fit as input waist</a></div>
   </section>
   <details class="settings"><summary>ROI &amp; analysis settings</summary>
     <form id="settings"><label>Effective scale (µm/px)<input type="number" id="scale" step="any" min="0.000001" placeholder="Pixel units"></label>

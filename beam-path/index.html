@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1e2b">
+<meta name="description" content="Move lenses, inspect Gaussian beam propagation and optimize spatial mode matching into two published SHG cavities.">
+<title>Beam path simulator · Beam Lab</title>
+<link rel="stylesheet" href="../web/workbench.css"><link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner"><a class="brand" href="../"><span class="mark" aria-hidden="true"></span>Beam Lab</a>
+<nav aria-label="Main navigation"><a href="../">Profiler</a><a href="./" aria-current="page" class="current">Beam path</a><a href="https://github.com/uwarring82/beam-profiler#beam-path-simulator">Methods</a></nav></div></header>
+<main>
+<div class="intro"><div><h1>Beam path simulator</h1><p>Place lenses along a beam and match its wavefront to a cavity.</p></div><button id="share" class="button quiet">Copy layout link</button></div>
+<div id="share-status" role="status" hidden></div>
+<section class="showcase" aria-label="SHG cavity showcases"><div class="section-title"><h2>SHG showcases</h2><a href="https://doi.org/10.1007/s00340-006-2274-2">Friedenauer et al., 2006</a></div>
+<div id="presets"><a class="preset" href="?stage=lbo" data-stage="lbo"><span class="spectrum ir" aria-hidden="true"></span><span><strong>LBO cavity</strong><small>1118 → 559 nm</small></span></a>
+<a class="preset" href="?stage=bbo" data-stage="bbo"><span class="spectrum uv" aria-hidden="true"></span><span><strong>BBO cavity</strong><small>559 → 279.5 nm</small></span></a></div></section>
+<div id="import-note" class="notice" hidden></div>
+<div class="instrument">
+<section class="viewer" aria-label="Live beam path"><header class="view-heading"><div><span>Propagation in air</span><h2>Beam envelope</h2></div><div class="legend"><span class="t">Tangential</span><span class="s">Sagittal</span><span class="goal">Target at coupler</span></div></header>
+<canvas id="plot" aria-label="Beam radius along the optical rail. Drag a lens marker to move it, or use the lens position controls below."></canvas>
+<div class="probe"><label for="probe">Probe <output id="probe-z"></output></label><input id="probe" type="range" min="0" max="600" step="any" value="300"><span id="probe-w"></span></div></section>
+<section class="results"><div class="section-title"><h2>At the input coupler</h2><span id="wavelengths" class="pill"></span></div>
+<div class="score"><span>Spatial mode overlap</span><strong id="overlap">—</strong></div>
+<table class="readout"><thead><tr><th>Mode at coupler</th><th>T</th><th>S</th></tr></thead>
+<tbody><tr><th>Beam radius (µm)</th><td id="wt">—</td><td id="ws">—</td></tr>
+<tr><th>Target radius (µm)</th><td id="twt">—</td><td id="tws">—</td></tr>
+<tr><th>Beam 1/R (m⁻¹)</th><td id="ct">—</td><td id="cs">—</td></tr>
+<tr><th>Target 1/R (m⁻¹)</th><td id="tct">—</td><td id="tcs">—</td></tr></tbody></table>
+<p id="ring-result" class="hint"></p></section></div>
+<p class="notice" id="invalid" role="status" hidden></p>
+<section class="fit-block"><div class="section-title"><div><h2>Lens rail</h2><p>Drag a lens on the plot or set its position from the start of the rail.</p></div><button id="add" class="button quiet">Add lens at probe</button></div><div id="lenses"></div></section>
+<section class="fit-block"><div class="section-title"><div><h2>Optimize mode matching</h2><p>Search unlocked positions within the rail, preserving lens order and clearance.</p></div><button id="search" class="button dark">Optimize layout</button></div>
+<div class="search-options"><label>Minimum clearance (mm)<input id="gap" type="number" step="any" min="0" value="10"></label>
+<label class="check"><input id="switch-f" type="checkbox"> Try other focal lengths</label>
+<label id="inventory" hidden>Available focal lengths (mm)<input id="catalog" value="50, 75, 100, 150, 200"></label></div>
+<div class="proposal" id="proposal" hidden><p id="search-status" role="status"></p><div id="moves"></div><button id="apply-layout" class="button primary" hidden>Apply layout</button><button id="dismiss" class="button quiet">Dismiss</button></div></section>
+<div class="configuration"><section class="fit-block"><h2>Input beam</h2><p class="hint">Waist locations are relative to the start of the rail. All radii are at 1/e² intensity.</p>
+<div class="fields" id="source"></div></section>
+<section class="fit-block"><h2>Cavity target</h2><label class="target-select">Mode definition<select id="target-kind"><option value="ring">Bow-tie eigenmode</option><option value="waists">Specified waist in air</option></select></label>
+<div id="ring"><p class="hint">Two identical curved mirrors, two flat mirrors and a centered crystal. Distances follow the central ray.</p><div class="fields" id="ring-fields"></div></div>
+<div id="waists" hidden><p class="hint">Positive waist locations are downstream of the input coupler.</p><div class="fields" id="target-fields"></div></div></section></div>
+<details class="settings" open><summary>Published geometry and model assumptions</summary>
+<p id="reference"></p><p id="assumptions"></p>
+<p>The overlap compares coaxial, aligned Gaussian pump modes including their wavefront curvature. SHG output power depends on losses, phase matching, walk-off and pump depletion. Enter focal lengths and refractive index at the chosen pump wavelength.</p>
+<a href="https://doi.org/10.1007/s00340-006-2274-2">Read the experiment · §3 and Table 1</a></details>
+<footer><p>Beam propagation and layout optimization run on your device.</p><a href="https://github.com/uwarring82/beam-profiler#beam-path-simulator">Source &amp; methods</a></footer>
+</main><script type="module" src="./app.mjs"></script></body></html>
