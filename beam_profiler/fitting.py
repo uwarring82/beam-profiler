@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.ndimage import uniform_filter
 from scipy.optimize import least_squares
 
 
@@ -42,6 +43,43 @@ def _template(model, x, y, params):
                      params[5] if model == "super_gaussian" else 1.)
 
 
+def _seed(data, metrics):
+    """Centroid and second moments in an iterated window about the brightest region.
+
+    Whole-ROI moments include every isolated noise pixel above threshold. On a
+    large sensor these dominate the second moments of a small spot. Iterate a
+    window of +/-1.5 D4sigma per axis, as in ISO 11146, starting at the peak.
+    """
+    signal = data - metrics["background_dn"]
+    signal[signal < 3 * metrics["noise_dn"]] = 0
+    height, width = signal.shape
+    py, px = np.unravel_index(np.argmax(uniform_filter(signal, 3)), signal.shape)
+    box = (max(px - 4, 0), max(py - 4, 0), min(px + 5, width), min(py + 5, height))
+    for _ in range(40):
+        bx0, by0, bx1, by1 = box
+        sub = signal[by0:by1, bx0:bx1]
+        total = sub.sum()
+        if total <= 0:
+            return None
+        xs, ys = np.arange(bx0, bx1), np.arange(by0, by1)
+        cx, cy = sub.sum(axis=0) @ xs / total, sub.sum(axis=1) @ ys / total
+        vx = sub.sum(axis=0) @ (xs - cx)**2 / total
+        vy = sub.sum(axis=1) @ (ys - cy)**2 / total
+        cov = (ys - cy) @ sub @ (xs - cx) / total
+        hx, hy = 6 * np.sqrt(vx) + 2, 6 * np.sqrt(vy) + 2
+        new = (max(int(np.floor(cx - hx)), 0), max(int(np.floor(cy - hy)), 0),
+               min(int(np.ceil(cx + hx)) + 1, width), min(int(np.ceil(cy + hy)) + 1, height))
+        if new == box:
+            break
+        box = new
+    eigenvalues, eigenvectors = np.linalg.eigh([[vx, cov], [cov, vy]])
+    minor, major = 2 * np.sqrt(np.maximum(eigenvalues, .25))
+    x0, y0 = metrics["roi"][:2]
+    return {"cx": x0 + cx, "cy": y0 + cy, "major": major, "minor": minor,
+            "angle": np.arctan2(eigenvectors[1, 1], eigenvectors[0, 1]),
+            "diameter_x": 4 * np.sqrt(vx), "diameter_y": 4 * np.sqrt(vy)}
+
+
 def _sample_axis(start, stop, center, diameter):
     # Midpoints of native-pixel intervals. Resolve a small spot even when it
     # occupies only a few pixels of a megapixel sensor. Include the full ROI.
@@ -56,7 +94,7 @@ def _sample_axis(start, stop, center, diameter):
     return np.asarray(edges[:-1]) + (widths - 1) // 2, widths
 
 
-def _fit_candidate(model, x, y, values, weights, m):
+def _fit_candidate(model, x, y, values, weights, m, seed):
     # Eliminate the linear peak and pedestal analytically at every solver step.
     weight_sum = weights.sum()
     mean = np.sum(weights * values) / weight_sum
@@ -79,9 +117,10 @@ def _fit_candidate(model, x, y, values, weights, m):
     upper_radius = 2 * max(x1 - x0, y1 - y0)
     low = [x0, y0, 1.]
     high = [x1 - 1, y1 - 1, upper_radius]
-    major, minor = np.array([m["major"], m["minor"]]) / (2 * m["scale"])
-    center = [m["centroid_x_px"], m["centroid_y_px"]]
-    angle = np.deg2rad(m["angle_deg"])
+    # Envelope-radius seeds in pixels: half the D4sigma diameter.
+    major, minor = seed["major"], seed["minor"]
+    center = [seed["cx"], seed["cy"]]
+    angle = seed["angle"]
     if model == "lg01":
         starts = [[*center, np.sqrt(major * minor / 2)]]
     else:
@@ -137,15 +176,18 @@ def fit_frame(pixels, dark, metrics, requested="compare"):
     data = pixels[y0:y1, x0:x1].astype(float)
     if dark is not None:
         data -= dark[y0:y1, x0:x1]
-    xs, wx = _sample_axis(x0, x1, metrics["centroid_x_px"], metrics["diameter_x"] / metrics["scale"])
-    ys, wy = _sample_axis(y0, y1, metrics["centroid_y_px"], metrics["diameter_y"] / metrics["scale"])
+    seed = _seed(data, metrics)
+    if seed is None:
+        raise ValueError("No beam signal found for the fit seed. Inspect the ROI and image.")
+    xs, wx = _sample_axis(x0, x1, seed["cx"], seed["diameter_x"])
+    ys, wy = _sample_axis(y0, y1, seed["cy"], seed["diameter_y"])
     sample = data[np.ix_(ys-y0, xs-x0)]
     weights = wy[:, None] * wx
     variance = float(data.var())
     candidates, failed = [], []
     best_rms, best_residual = np.inf, None
     for model in MODELS if requested == "compare" else [requested]:
-        fitted = _fit_candidate(model, xs, ys[:, None], sample, weights, metrics)
+        fitted = _fit_candidate(model, xs, ys[:, None], sample, weights, metrics, seed)
         if fitted is None:
             failed.append(model)
             continue

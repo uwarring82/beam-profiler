@@ -92,3 +92,17 @@ def test_fit_rejects_bad_inputs():
     m, *_ = analyze(raw, 4095, dark=dark)
     with pytest.raises(ValueError, match="supported"):
         fit_frame(raw, dark, m, ["hg10"])
+
+
+@pytest.mark.parametrize("mode", ["gaussian", "super_gaussian", "hg10", "hg11", "lg01"])
+def test_small_spot_on_full_sensor_at_default_threshold(mode):
+    # Isolated noise pixels above a 3-sigma threshold inflate whole-ROI moments
+    # by orders of magnitude here. The fit must not depend on those moments.
+    radii = (5., 5. if mode == "lg01" else 4.)
+    raw, dark = exposure(mode, radii, shape=(1080, 1440), center=(700.4, 500.7))
+    m, *_ = analyze(raw, 4095, dark=dark)
+    assert m["valid"] and not m["warnings"] and m["diameter_x"] > 100
+    best = fit_frame(raw, dark, m, mode).summary["candidates"][0]
+    np.testing.assert_allclose([best["center_x_px"], best["center_y_px"]], [700.4, 500.7], atol=.05)
+    np.testing.assert_allclose([best["radius_u_px"], best["radius_v_px"]], radii, atol=.06)
+    assert best["rmse_dn"] == pytest.approx(1.5, abs=.12)
