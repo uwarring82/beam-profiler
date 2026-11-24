@@ -49,7 +49,7 @@ Clean design is the main tool for focusing a visitor's intention, not decoration
 | Layer | Question it answers | Tools | Artefact | First pass |
 | --- | --- | --- | --- | --- |
 | 0 Orient | What am I being asked to do? | This page, one showcase | Task restated as target mode, constraints and success measure | 1 h |
-| 1 Explore | What does a lens do to my beam? | Beam path simulator, LBO and BBO showcases | Shared layout link and three short answers | 2 h |
+| 1 Explore | What does a lens do to my beam? | Beam path simulator, LBO, BBO and fibre-launch showcases | Shared layout link and three short answers | 2 h |
 | 2 Measure | What beam do I actually have? | Profiler (browser workbench or camera), fits, D4σ, D50/D86.5 | One export per plane at five or more planes (snapshot ZIP from the camera application, JSON from the browser workbench); w(z) table | Half a lab day |
 | 3 Design | Which layout do I build, and did it work? | Simulator with measured input, lab lens catalogue, locks, clearance, optimiser | Layout link; predicted versus measured radii | 1–2 days |
 | 4 Extend | The tools cannot do what I need | Repository, tests, logbook | Issue or pull request with a validation test | Thesis scale |
@@ -152,7 +152,7 @@ Do them in order. Each one is a pull request with screenshots at 1280 px and 390
 | WP | Deliverable | Accepted when |
 | --- | --- | --- |
 | 1 | Landing page and design frame | Passes the design review gate. The live action works on a phone. All five entry questions lead to a page, a stub if need be. |
-| 2 | Layer cards 0–2 | Each card has every element in section 2.1, including a skip self-check, common traps and what the layer cannot settle. Every deep link opens the stated tool state. From “Focus a beam onto a target”, the Layer 1 action opens the simulator with “Specified waist in air” already selected. |
+| 2 | Layer cards 0–2 | Each card has every element in section 2.1, including a skip self-check, common traps and what the layer cannot settle. Every deep link opens the stated tool state. From “Focus a beam onto a target”, the Layer 1 action opens the simulator with “Specified waist in air” already selected. From “Couple a beam into a cavity or fibre”, the card also offers the fibre-launch showcase, where students enter their fibre's mode field diameter and their output coupler's focal length, focus travel and clear aperture. |
 | 3 | Loop, trade-off examples, decision-log template | The loop is on the landing page with a text equivalent. Each trade-off row links to a place in a tool where the student can see it. |
 | 4 | macOS install card; Linux and Windows cards marked "validation pending" | The four-step ladder works on a clean Mac. Pending cards say so in their first line. |
 | 5 | CI checks | A test opens every internal link, loads every exercise through the app's validator, and asserts every number quoted on a card against the tools. Stage B runs on Ubuntu, macOS and Windows runners. |

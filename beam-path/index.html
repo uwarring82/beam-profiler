@@ -15,8 +15,21 @@
 <div id="share-status" role="status" hidden></div>
 <section class="showcase" aria-label="SHG cavity showcases"><div class="section-title"><h2>SHG showcases</h2><a href="https://doi.org/10.1007/s00340-006-2274-2">From Friedenauer et al. (2006), under review</a></div>
 <div id="presets"><a class="preset" href="?stage=lbo" data-stage="lbo"><span class="spectrum ir" aria-hidden="true"></span><span><strong>LBO cavity</strong><small>1118 → 559 nm</small></span></a>
-<a class="preset" href="?stage=bbo" data-stage="bbo"><span class="spectrum uv" aria-hidden="true"></span><span><strong>BBO cavity</strong><small>559 → 279.5 nm</small></span></a></div></section>
+<a class="preset" href="?stage=bbo" data-stage="bbo"><span class="spectrum uv" aria-hidden="true"></span><span><strong>BBO cavity</strong><small>559 → 279.5 nm</small></span></a>
+<a class="preset" href="?stage=fiber" data-stage="fiber"><span class="spectrum ir" aria-hidden="true"></span><span><strong>Fibre launch</strong><small>Fibre coupler → LBO</small></span></a></div></section>
 <div id="import-note" class="notice" hidden></div>
+<section class="fit-block" id="fiber-launch" hidden><h2>Your fibre and output coupler</h2>
+<p class="hint">Enter both from their datasheets. Two settings then match the fibre mode to the cavity: the fibre tip's distance from the coupler lens, set by its focus adjustment, and the lens's distance from the cavity.</p>
+<p id="launch-example" class="notice">Example values are shown. Replace them with your fibre and your output coupler.</p>
+<div class="launch-groups">
+<fieldset><legend>Fibre</legend><div class="fields" id="launch-fibre"></div></fieldset>
+<fieldset><legend>Output coupler</legend><div class="fields" id="launch-coupler"></div></fieldset>
+<fieldset><legend>Bench</legend><div class="fields" id="launch-bench"></div></fieldset>
+</div>
+<button id="solve-launch" class="button dark">Find focus and distance</button>
+<fieldset class="launch-settings"><legend>Current setting</legend><div class="fields" id="launch-settings"></div></fieldset>
+<p id="launch-state" class="hint" role="status"></p>
+<p id="launch-result" class="hint" role="status" hidden></p></section>
 <div class="instrument">
 <section class="viewer" aria-label="Live beam path"><header class="view-heading"><div><span>Drag a lens marker</span><h2>Beam envelope</h2></div><div class="legend"><span class="t">Tangential</span><span class="s">Sagittal</span><span class="goal">Target at coupler</span></div></header>
 <canvas id="plot" aria-label="Beam radius along the optical rail. Drag a lens marker to move it, or use the lens position controls below."></canvas>

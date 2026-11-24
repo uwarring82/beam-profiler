@@ -2,6 +2,14 @@
 
 Consequential changes and how they were validated. Newest first.
 
+## 2026-11-24 · Fibre launch showcase
+
+- Added a fibre-launch showcase: the fibre mode and the output coupler alone match the LBO cavity, with focus offset and distance to the input coupler as the two settings. The search reports the 1% focus and distance tolerances and the clear-aperture transmission.
+- Validated against a brute-force grid over both settings, exact waist-to-waist imaging onto a round target, the Gaussian aperture integral and a deliberately short focus travel that reports its limits. With the illustrative 6.6 µm mode field diameter and 11 mm coupler, the overlap rises from 10.91% (collimated, 600 mm) to 99.92% at +175.8 µm and 735.4 mm. A ±6.1 µm focus error or a ±23.4 mm distance error costs 1%. Browser checks at 1280 px and 390 px; no console errors.
+- Second review: the aperture transmission is shown separately and alone bounds the coupled power (an integrated clipped field couples 35.02%, above both the 32.69% ideal overlap and their product); astigmatism is credited only with the separately computed round-beam bound, other loss is residual mismatch of the fibre and lens; invalid inputs blank the readouts; a bench range inside the 1% tolerance is stated as such; fibre links saved before confirmations keep their optics.
+- Review changes: per-value datasheet confirmation, kept in layout links; validation that blocks the search and the link and names the field; the result labelled ideal, unclipped overlap beside the aperture transmission, with active limits, the unconstrained overlap and one-sided tolerances at a stop; a locked coupler keeps its focus. The search now re-optimises the distance at each focus value and starts from the imaging estimate: for a 3 µm mode field diameter behind a 6 mm coupler with ±2 mm travel it reaches 99.92% at 867.7 mm, where the first version stopped at 99.65% (regression test).
+- The fibre and the output coupler are the students' entry points: they sit first on the page, grouped as fibre, output coupler and bench, with datasheet hints. Example values are marked until replaced.
+
 ## 2026-11-24 · WP 1 · Student entrance
 
 - Added the [student entrance](../start/index.html) and five task routes. A touch-emulated lens drag at 390 px changed the overlap with the marker and readout in view.

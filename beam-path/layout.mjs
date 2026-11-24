@@ -40,13 +40,16 @@ function readShape(shape, input) {
 
 export function openLayout(url) {
   const params = url.searchParams;
-  const stage = params.get('stage') === 'bbo' ? 'bbo' : 'lbo';
+  const stage = ['bbo', 'fiber'].includes(params.get('stage')) ? params.get('stage') : 'lbo';
   const layout = {stage, path: showcase(stage), gap: 10, fit: null, notice: ''};
   if (url.hash.startsWith('#layout=')) {
     try {
       if (url.hash.length > 20000) throw Error();
       const data = JSON.parse(decodeURIComponent(url.hash.slice(8)));
       if (data.v !== 1) throw Error();
+      // Fibre links saved before datasheet confirmations existed keep their optics.
+      if (stage === 'fiber' && data.path?.launch && typeof data.path.launch === 'object' && data.path.launch.confirmed === undefined)
+        data.path.launch.confirmed = structuredClone(layout.path.launch.confirmed);
       const incoming = readShape(layout.path, data.path);
       validatePath(incoming);
       targetMode(incoming);

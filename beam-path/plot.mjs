@@ -71,10 +71,13 @@ export function draw(canvas, path, target, probe) {
     line(left,yy,width-right,yy);
     ctx.textAlign='right'; ctx.fillText(String(Math.round(ymax*factor)),left-6,yy+4);
   }
-  for (let i=0;i<=4;i++) {
-    const z=path.length*i/4, xx=x(z);
+  // Round rail ticks (1, 2, 2.5 or 5 × 10^k mm), at most five intervals.
+  const raw=path.length/5, power=10**Math.floor(Math.log10(raw));
+  const step=[1,2,2.5,5,10].map(m=>m*power).find(s=>s>=raw);
+  for (let z=0; z<=path.length+1e-9; z+=step) {
+    const xx=x(z);
     ctx.strokeStyle='#233347'; line(xx,31,xx,height-32);
-    ctx.textAlign='center'; ctx.fillText(Number(z.toFixed(2)).toString(),xx,height-17);
+    ctx.textAlign='center'; ctx.fillText(Number(z.toFixed(3)).toString(),xx,height-17);
   }
   ctx.fillText('Rail position (mm)',(width+left-right)/2,height-2);
   const colors=['#83dfb3','#c7a2ed'];

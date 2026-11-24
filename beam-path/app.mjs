@@ -3,17 +3,30 @@ import {showcases} from './showcases.mjs';
 import {fitProjection, openLayout, shareLayout} from './layout.mjs';
 import {renderSearchResult} from './search-result.mjs';
 import {draw, lensMarkerAt, positionAt} from './plot.mjs';
+import {applyLaunch, apertureTransmission, solveLaunch} from './fiber.mjs';
 
 const $ = id => document.getElementById(id);
 const fmt = (number, digits=2) => Number(number.toFixed(digits)).toLocaleString('en-US', {maximumFractionDigits:digits});
 const percent = n => (100*n).toFixed(2)+'%';
 const {stage, path, gap, fit, notice} = openLayout(new URL(location.href));
-const ref = showcases[stage];
+const ref = showcases[stage], cavityRef = showcases[ref.cavity ?? stage];
 const projected = fit && fitProjection(fit);
 const approximate = projected?.fitOverlap < 0.99;
 $('gap').value = gap;
 let beamValid=false, target, worker, proposal, dragging=null;
 const fieldInputs = new Map();
+// Inputs that show a path value; refreshed when another control changes it.
+const bound = [];
+function refreshFields() {
+  for (let i = bound.length - 1; i >= 0; i--) {
+    const {field, get, digits = 6} = bound[i];
+    if (!field.isConnected) { bound.splice(i, 1); continue; }
+    // Keep what the student typed while it is being edited or still invalid.
+    if (document.activeElement === field || field.getAttribute('aria-invalid') === 'true') continue;
+    const value = get();
+    field.value = Number.isFinite(value) ? Number(value.toFixed(digits)) : '';
+  }
+}
 
 function labelFor(parent, text, input) {
   const label = document.createElement('label');
@@ -24,6 +37,17 @@ function numeric(parent, label, object, key) {
   field.type='number'; field.step='any'; field.value=object[key];
   field.oninput=()=>{object[key]=field.valueAsNumber; edited();};
   labelFor(parent,label,field);
+  bound.push({field, get: () => object[key]});
+  return field;
+}
+function derived(parent, label, get, set, digits=6) {
+  const field=document.createElement('input');
+  field.type='number'; field.step='any';
+  field.oninput=()=>{ if (Number.isFinite(field.valueAsNumber)) { set(field.valueAsNumber); renderLenses(); } edited(); };
+  labelFor(parent,label,field);
+  bound.push({field, get, digits});
+  const initial = get();
+  field.value = Number.isFinite(initial) ? Number(initial.toFixed(digits)) : '';
   return field;
 }
 function selectField(parent, label, choices, current, change) {
@@ -62,8 +86,9 @@ function showImportNote() {
   note.hidden = false;
 }
 document.querySelector('[data-stage="'+stage+'"]').setAttribute('aria-current','true');
-$('reference').textContent='From Friedenauer et al. (2006), under review. '+stage.toUpperCase()+' stage · '+ref.pump+' nm pump, '+ref.short+' mm between focusing mirrors, '+ref.total+' mm total cavity length and '+ref.fold+'° full fold. The paper gives a '+ref.designWaist+' µm design waist. Table 1 reports '+ref.inputPower.toFixed(2)+' W incident, '+ref.outputPower+' W output and '+ref.efficiency+'% doubling efficiency.';
-$('assumptions').textContent='Showcase assumptions · The '+ref.rail+' mm external injection rail, input waist, injection lens focal lengths and placements, and distance from the coupler to the first curved mirror are illustrative. We interpret the tabulated cavity length as a geometric round trip and the crystal length along the central ray. The scalar pump index is set to '+ref.index.toFixed(2)+'. '+(stage==='bbo'?'The Brewster plane lies in the cavity plane. The model carries the 25 mm mirror focal length over from the first stage.':'The 25 mm focusing mirrors have a 50 mm radius of curvature.');
+$('reference').textContent='From Friedenauer et al. (2006), under review. '+(ref.cavity?'Cavity: ':'')+(ref.cavity??stage).toUpperCase()+' stage · '+cavityRef.pump+' nm pump, '+cavityRef.short+' mm between focusing mirrors, '+cavityRef.total+' mm total cavity length and '+cavityRef.fold+'° full fold. The paper gives a '+cavityRef.designWaist+' µm design waist. Table 1 reports '+cavityRef.inputPower.toFixed(2)+' W incident, '+cavityRef.outputPower+' W output and '+cavityRef.efficiency+'% doubling efficiency.';
+if (ref.cavity) $('assumptions').textContent='Fibre launch assumptions · The fibre mode is a Gaussian waist at the fibre tip with a radius of half the mode field diameter. Use the diameter at the pump wavelength: the fibre\'s quoted numerical aperture is not the beam divergence. The output coupler is a thin lens, so the focus offset counts from its effective focal length; a real collimator\'s mechanical scale has a different zero, but changes in offset carry over. The mode field diameter, focal length, focus travel and clear aperture shown first are illustrative: enter your fibre and collimator. The cavity is the LBO showcase, with its assumptions.';
+else $('assumptions').textContent='Showcase assumptions · The '+ref.rail+' mm external injection rail, input waist, injection lens focal lengths and placements, and distance from the coupler to the first curved mirror are illustrative. We interpret the tabulated cavity length as a geometric round trip and the crystal length along the central ray. The scalar pump index is set to '+ref.index.toFixed(2)+'. '+(stage==='bbo'?'The Brewster plane lies in the cavity plane. The model carries the 25 mm mirror focal length over from the first stage.':'The 25 mm focusing mirrors have a 50 mm radius of curvature.');
 numeric($('source'),'Pump wavelength (nm)',path,'wavelength');
 numeric($('source'),'Rail length (mm)',path,'length');
 addWaistFields($('source'),path.source);
@@ -101,7 +126,7 @@ function resetSearch(){
   $('apply-layout').hidden=true;$('moves').textContent='';$('limits').hidden=true;
 }
 function edited(){
-  resetSearch();$('share-status').hidden=true;analyze();
+  resetSearch();$('share-status').hidden=true;$('launch-result').hidden=true;analyze();
 }
 function probeValue(){return Number($('probe').value);}
 function updateProbe(){
@@ -138,6 +163,29 @@ function analyze(){
   $('wavelengths').textContent=Number.isFinite(path.wavelength)&&path.wavelength>0?fmt(path.wavelength,3)+' → '+fmt(path.wavelength/2,3)+' nm':'—';
   $('add').disabled=!Number.isFinite(path.length)||path.length<1||path.lenses.length>=maxLenses;
   $('search').disabled=!target||!!worker||!path.lenses.some(l=>!l.locked);
+  if (ref.cavity) {
+    const problem = launchProblem();
+    if (problem) {
+      // Do not show results computed from the last valid values.
+      beamValid = false;
+      $('overlap').textContent = '—';
+      setModeValues('', null);
+    }
+    let state = problem, blocked = !!problem;
+    if (!problem) try {
+      const {w, transmission} = apertureTransmission(path, path.launch.aperture);
+      state = 'Beam radius at the coupler lens '+fmt(w, 3)+' mm. The '+fmt(path.launch.aperture, 2)+' mm clear aperture passes '+share(transmission)+' of the power.'
+        + (path.lenses[0]?.locked ? ' L1 is locked: the search changes only the distance.' : '');
+    } catch (e) { state = e.message; blocked = true; }
+    $('solve-launch').disabled = !target || blocked;
+    $('share').disabled = !target || !!problem;
+    $('launch-state').textContent = state;
+    $('launch-state').classList.toggle('problem', !!problem);
+    const examples = unconfirmed();
+    $('launch-example').hidden = !examples.length;
+    $('launch-example').textContent = 'Example values: '+listText(examples)+'. Replace them with your parts, or tick “From my datasheet” where they match.';
+  }
+  refreshFields();
   updateProbe();
 }
 $('probe').oninput=updateProbe;
@@ -190,6 +238,7 @@ $('apply-layout').onclick=()=>{
   renderSearchResult(applied, resultUI, true);
 };
 $('share').onclick=async()=>{
+  if (ref.cavity && launchProblem()) { analyze(); return; }
   const link = shareLayout(location.href, {stage, path, gap: $('gap').valueAsNumber, fit});
   const status=$('share-status');status.replaceChildren();status.hidden=false;
   try {await navigator.clipboard.writeText(link.href);status.textContent='Layout link copied.';}
@@ -198,6 +247,112 @@ $('share').onclick=async()=>{
     labelFor(status,'Copy this layout link',input);input.select();
   }
 };
+// Fibre launch: what students enter, its checks, and the search result.
+const launchChecks = [];
+const confirmNames = {mfd: 'mode field diameter', f: 'effective focal length', travel: 'focus travel', aperture: 'clear aperture'};
+const unconfirmed = () => Object.keys(confirmNames).filter(key => !path.launch?.confirmed?.[key]).map(key => confirmNames[key]);
+function launchProblem() {
+  let message = '';
+  for (const check of launchChecks) {
+    const v = check.field.valueAsNumber;
+    const bad = check.field.value.trim() === '' || !Number.isFinite(v) || !check.valid(v);
+    check.field.setAttribute('aria-invalid', bad ? 'true' : 'false');
+    if (bad && !message) message = check.message();
+  }
+  return message;
+}
+// Power fractions near one: "more than 99.9999%" rather than a rounded 100%.
+const share = x => x > 0.999999 ? 'more than 99.9999%' : (100*x).toFixed(x > 0.9999 ? 4 : 2)+'%';
+function listText(items) {
+  return items.length < 2 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items.at(-1);
+}
+if (ref.cavity) {
+  $('fiber-launch').hidden = false;
+  const lens = () => path.lenses[0];
+  const offset = () => lens() ? lens().z - lens().f : NaN, distance = () => lens() ? path.length - lens().z : NaN;
+  let hints = 0;
+  const hint = (field, text) => {
+    const small = document.createElement('small'); small.className = 'field-hint'; small.textContent = text;
+    small.id = 'launch-hint-'+(++hints); field.setAttribute('aria-describedby', small.id);
+    field.parentElement.after(small);
+  };
+  const confirm = (field, key) => {
+    const box = document.createElement('input'); box.type = 'checkbox'; box.checked = path.launch.confirmed[key];
+    const label = labelFor(field.parentElement.parentElement, 'From my datasheet', box); label.className = 'check confirm';
+    (field.parentElement.nextElementSibling?.classList.contains('field-hint') ? field.parentElement.nextElementSibling : field.parentElement).after(label);
+    box.setAttribute('aria-label', 'The '+confirmNames[key]+' is from my datasheet');
+    box.onchange = () => { path.launch.confirmed[key] = box.checked; edited(); };
+    field.addEventListener('input', () => { path.launch.confirmed[key] = box.checked = true; analyze(); });
+  };
+  const check = (field, valid, message) => { launchChecks.push({field, valid, message}); return field; };
+  const mfd = check(derived($('launch-fibre'), 'Mode field diameter (µm)', () => 2*path.source.t.w, v => { if (v >= 0.5 && v <= 100) path.source.t.w = path.source.s.w = v/2; }),
+    v => v >= 0.5 && v <= 100, () => 'Mode field diameter: enter a value from 0.5 to 100 µm.');
+  hint(mfd, 'At the pump wavelength, from the fibre datasheet. Not the numerical aperture.'); confirm(mfd, 'mfd');
+  const focal = check(derived($('launch-coupler'), 'Effective focal length (mm)', () => lens()?.f ?? NaN, v => {
+    if (!lens() || !(v >= 0.5 && v <= 1000)) return; const d = offset(), D = distance(); lens().f = v; applyLaunch(path, d, D); }),
+    v => v >= 0.5 && v <= 1000, () => 'Effective focal length: enter a value from 0.5 to 1000 mm.');
+  hint(focal, 'From the coupler datasheet, at the pump wavelength.'); confirm(focal, 'f');
+  const travel = check(numeric($('launch-coupler'), 'Focus travel, ± (mm)', path.launch, 'travel'),
+    v => v > 0 && v <= 100, () => 'Focus travel: enter a positive value up to 100 mm.');
+  hint(travel, 'How far the fibre tip can move either way from the focus.'); confirm(travel, 'travel');
+  const aperture = check(numeric($('launch-coupler'), 'Clear aperture (mm)', path.launch, 'aperture'),
+    v => v > 0 && v <= 100, () => 'Clear aperture: enter a positive diameter up to 100 mm.');
+  hint(aperture, 'Diameter of the coupler lens opening.'); confirm(aperture, 'aperture');
+  check(numeric($('launch-bench'), 'Shortest distance to the cavity (mm)', path.launch, 'minDistance'),
+    v => v >= 0 && v <= 1e5, () => 'Shortest distance: enter zero or more, up to 100 m.');
+  check(numeric($('launch-bench'), 'Longest distance to the cavity (mm)', path.launch, 'maxDistance'),
+    v => v > path.launch.minDistance && v <= 1e5, () => 'Longest distance: enter a value above the shortest distance, up to 100 m.');
+  check(derived($('launch-settings'), 'Fibre tip to lens, minus f (µm)', () => 1000*offset(), v => { if (lens()) applyLaunch(path, v/1000, distance()); }, 1),
+    v => !(path.launch.travel > 0) || Math.abs(v) <= 1000*path.launch.travel + 1e-6,
+    () => 'Fibre tip setting: keep it within the ±'+fmt(path.launch.travel, 3)+' mm focus travel.');
+  check(derived($('launch-settings'), 'Coupler lens to input coupler (mm)', () => distance(), v => { if (lens() && v >= 0) applyLaunch(path, offset(), v); }, 2),
+    v => v >= 0 && v <= 1e5, () => 'Distance to the input coupler: enter zero or more, up to 100 m.');
+
+  $('solve-launch').onclick = () => {
+    const result = $('launch-result');
+    if (launchProblem()) { analyze(); return; }
+    try {
+      const target = targetMode(path).q, locked = !!lens()?.locked;
+      const before = overlap(propagate(sourceQ(path), lensOrder(path.lenses), path.length), target);
+      const found = solveLaunch(path, target, path.launch, {lockFocus: locked});
+      applyLaunch(path, found.delta, found.D);
+      renderLenses(); edited();
+      const {transmission} = apertureTransmission(path, path.launch.aperture);
+      const loss = x => (100*x).toFixed(2)+'%';
+      const parts = [];
+      const examples = unconfirmed();
+      if (examples.length) parts.push('With example values for the '+listText(examples)+':');
+      parts.push('Ideal, unclipped spatial overlap '+percent(found.eta)+' (previously '+percent(before)+'), with the fibre tip at f '+(found.delta >= 0 ? '+ ' : '− ')+fmt(1000*Math.abs(found.delta), 1)+' µm from the lens and the lens '+fmt(found.D, 1)+' mm from the input coupler.');
+      // Transmission alone bounds the coupled power. Clipping also changes the
+      // overlap itself, in either direction, so the two are not multiplied.
+      parts.push('Separately, the '+fmt(path.launch.aperture, 2)+' mm clear aperture passes '+share(transmission)+' of the power, so no more than that can couple.'+(transmission < 0.99 ? ' Clipping also changes the overlap itself, which the ideal figure leaves out. Use a larger clear aperture or a shorter focal length.' : ''));
+      if (found.limits.length) parts.push('Active '+(found.limits.length === 1 ? 'limit' : 'limits')+': '+listText(found.limits.map(l => l === 'locked focus' ? 'the locked coupler focus' : 'the '+l))+'. Without '+(found.limits.length === 1 ? 'it' : 'them')+' the overlap could reach '+percent(found.ceiling)+'.');
+      if (1 - found.round > 1e-4) parts.push('Even an ideal round beam reaches at most '+percent(found.round)+' here, because the cavity mode differs between its tangential and sagittal planes.');
+      if (found.round - found.ceiling > 1e-4) parts.push((found.limits.length ? 'Even without the limits, this' : 'This')+' fibre and lens leave a residual mismatch of '+loss(1 - found.ceiling/found.round)+(path.lenses[0].f < found.f0 ? ', because the focal length is shorter than the '+fmt(found.f0, 2)+' mm needed to image the fibre mode onto the target waist.' : '.'));
+      // One-sided where a stop is active: name the stop instead of a number.
+      const change = (name, {minus, plus}, scale, unit, lowStop, highStop) => {
+        const values = [], notes = [];
+        for (const [v, sign, stop, way] of [[minus, '−', lowStop, 'a decrease'], [plus, '+', highStop, 'an increase']]) {
+          if (Number.isFinite(v)) values.push(sign+fmt(scale*v, 1)+' '+unit);
+          else if (v === null) notes.push('the '+stop+' blocks '+way);
+          else notes.push(way+' stays within 1% up to the '+stop);
+        }
+        return values.length ? 'a '+name+' change of '+values.join(' or ')+(notes.length ? ' ('+notes.join('; ')+')' : '') : null;
+      };
+      const t = found.tolerance, changes = [], whole = [];
+      for (const [name, tol, scale, unit, low, high] of [['focus', t.delta, 1000, 'µm', 'travel stop', 'travel stop'], ['distance', t.D, 1, 'mm', 'shortest distance', 'longest distance']]) {
+        if (!tol) continue;
+        const clause = change(name, tol, scale, unit, low, high);
+        if (clause) changes.push(clause); else whole.push(name);
+      }
+      if (changes.length) parts.push('The overlap falls by 1% with '+changes.join(', or ')+'.');
+      if (whole.length) parts.push('The overlap stays within 1% throughout the allowed '+listText(whole)+' range.');
+      if (locked) parts.push('L1 is locked, so only the distance changed.');
+      result.textContent = parts.join(' ');
+    } catch (e) { result.textContent = e.message; }
+    result.hidden = false;
+  };
+}
 renderLenses();analyze();
 new ResizeObserver(updateProbe).observe($('plot'));
 // Opening a second shared design in this tab can be a fragment-only navigation.
