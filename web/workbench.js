@@ -175,7 +175,13 @@ function renderFit() {
   $('fit-info').textContent=parts.join(' · ');
   const notes=['Residual = measured − fitted intensity. Blue indicates a deficit and red an excess.'];
   const gaussian=rows.find(r=>r.model==='gaussian'),flat=rows.find(r=>r.model==='super_gaussian');
-  if(gaussian && flat && flat.order<1.01 && Math.abs(flat.rmse_dn-gaussian.rmse_dn)<=.001*gaussian.rmse_dn)
+  const tiedGaussian=gaussian && flat && flat.order<1.01 && Math.abs(flat.rmse_dn-gaussian.rmse_dn)<=.001*gaussian.rmse_dn;
+  const useWaist=packet.metrics.unit==='µm' && (best===gaussian || (best===flat && tiedGaussian));
+  $('launch-path').hidden=!useWaist;
+  if(useWaist) $('launch-path').href='./beam-path/?'+new URLSearchParams({
+    wt:gaussian.radius_u_px*scale, ws:gaussian.radius_v_px*scale
+  });
+  if(tiedGaussian)
     notes.push('Gaussian and super-Gaussian RMS agree within 0.1% at order ≈ 1.');
   if(fitResult.summary.failed_models.length)notes.push('Unresolved fits: '+fitResult.summary.failed_models.join(', ')+'.');
   $('fit-note').textContent=notes.join(' ');
