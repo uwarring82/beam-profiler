@@ -203,3 +203,7 @@ $('share').onclick=async()=>{
 };
 renderLenses();analyze();
 new ResizeObserver(updateProbe).observe($('plot'));
+// Opening a second shared design in this tab can be a fragment-only navigation.
+window.addEventListener('hashchange', ({oldURL, newURL}) => {
+  if ([oldURL, newURL].some(url => new URL(url).hash.startsWith('#layout='))) location.reload();
+});
