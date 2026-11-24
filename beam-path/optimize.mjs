@@ -92,8 +92,14 @@ export function optimize(p, gap, catalog = []) {
   const limits=[];
   for (const i of free) {
     const l=best.ls[i];
-    if (l.z-low(best.ls,i)<1e-3) limits.push({lens:l.index, side:i?'lens':'start'});
-    else if (high(best.ls,i)-l.z<1e-3) limits.push({lens:l.index, side:i+1<best.ls.length?'lens':'coupler'});
+    if (l.z-low(best.ls,i) <= 0.001) {
+      const left = best.ls[i-1];
+      limits.push(left ? {lens:l.index, side:'lens', neighbor:left.index} : {lens:l.index, side:'start'});
+    }
+    if (high(best.ls,i)-l.z <= 0.001) {
+      const right = best.ls[i+1];
+      limits.push(right ? {lens:l.index, side:'lens', neighbor:right.index} : {lens:l.index, side:'coupler'});
+    }
   }
   return {before,after:best.eta,limits,lenses:best.ls.sort((a,b)=>a.index-b.index).map(({index,...l})=>l)};
 }

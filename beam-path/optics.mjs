@@ -43,9 +43,15 @@ export function checkFocus(f) {
 // 1/e² radii of the camera-x and camera-y marginals of an elliptical Gaussian
 // with principal radii wu, wv and u axis at angle degrees from +x toward +y.
 export function cameraRadii(wu, wv, angle = 0) {
-  const c = Math.cos(angle*Math.PI/180), s = Math.sin(angle*Math.PI/180);
-  return {x: Math.sqrt(wu*wu*c*c + wv*wv*s*s), y: Math.sqrt(wu*wu*s*s + wv*wv*c*c),
-    tilt: Math.abs(((angle % 90) + 135) % 90 - 45)};
+  const theta = (angle % 180)*Math.PI/180;
+  const c = Math.cos(theta), s = Math.sin(theta);
+  const x = Math.hypot(wu*c, wv*s), y = Math.hypot(wu*s, wv*c);
+  // For the true squared-radius matrix M and its diagonal D, the normalized
+  // planar-field power overlap is 4√(det M det D)/det(M+D).
+  // h = √(det M / det D) stays accurate even at large aspect ratios.
+  const h = Math.min(1, wu*wv/(x*y));
+  const fitOverlap = 4*h/(3+h*h);
+  return {x, y, fitOverlap, tilt: Math.abs(((angle % 90) + 135) % 90 - 45)};
 }
 
 export function waistQ(w, wavelength, distance = 0) {
