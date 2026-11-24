@@ -50,7 +50,7 @@ Clean design is the main tool for focusing a visitor's intention, not decoration
 | --- | --- | --- | --- | --- |
 | 0 Orient | What am I being asked to do? | This page, one showcase | Task restated as target mode, constraints and success measure | 1 h |
 | 1 Explore | What does a lens do to my beam? | Beam path simulator, LBO and BBO showcases | Shared layout link and three short answers | 2 h |
-| 2 Measure | What beam do I actually have? | Profiler (browser workbench or camera), fits, D4σ, D50/D86.5 | Export ZIPs at five or more planes; w(z) table | Half a lab day |
+| 2 Measure | What beam do I actually have? | Profiler (browser workbench or camera), fits, D4σ, D50/D86.5 | One export per plane at five or more planes (snapshot ZIP from the camera application, JSON from the browser workbench); w(z) table | Half a lab day |
 | 3 Design | Which layout do I build, and did it work? | Simulator with measured input, lab lens catalogue, locks, clearance, optimiser | Layout link; predicted versus measured radii | 1–2 days |
 | 4 Extend | The tools cannot do what I need | Repository, tests, logbook | Issue or pull request with a validation test | Thesis scale |
 
@@ -93,7 +93,7 @@ Where perspectives pull against each other in the lab's own SHG chain (use these
 | --- | --- | --- |
 | Spot size in the crystal | Conversion: tighter focusing, up to an optimum | Cavity: stability margin and alignment tolerance; thermal effects at high power |
 | Brewster-cut BBO | Cavity loss: no anti-reflection coating on the crystal faces | Mode: an astigmatic cavity mode, compensated by the fold angle; the UV leaves elliptical and needs a cylindrical telescope |
-| Lens positions from the optimiser | Overlap: the highest number | Lab: mounts, inventory and clearance; on a 600 mm rail the BBO optimum sat at the coupler limit |
+| Lens positions from the optimiser | Overlap: the highest number | Lab: mounts, inventory and clearance; the BBO preset uses a 700 mm rail; shorten it to 600 mm and the optimum sits at the coupler limit, which the page flags (use this as a worked example with the shorter rail selected explicitly) |
 | Input beam for the simulator | Simulation: one waist and its position per plane | Measurement: a single image gives no curvature; ROI and threshold change the widths |
 | Measure of success | Optics: spatial overlap near 100% | Experiment: harmonic power also depends on phase matching, losses and impedance matching; the published stages reached 52.7% and 28.9% |
 
@@ -156,7 +156,7 @@ Do them in order. Each one is a pull request with screenshots at 1280 px and 390
 | 3 | Loop, trade-off examples, decision-log template | The loop is on the landing page with a text equivalent. Each trade-off row links to a place in a tool where the student can see it. |
 | 4 | macOS install card; Linux and Windows cards marked "validation pending" | The four-step ladder works on a clean Mac. Pending cards say so in their first line. |
 | 5 | CI checks | A test opens every internal link, loads every exercise through the app's validator, and asserts every number quoted on a card against the tools. Stage B runs on Ubuntu, macOS and Windows runners. |
-| 6 | Caustic-fit notebook (workaround until the profiler fits w(z)) | It fits waist, position and M² from five or more export ZIPs and writes the `?wu…` link for the simulator. |
+| 6 | Caustic-fit notebook (workaround until the profiler fits w(z)) | It fits waist radius, waist position and M² from five or more exports (ZIP or browser JSON) and writes a full `#layout=` link with the fitted waists and positions; `?wu…` carries radii and angle only. M² stays visible as a separate result, because the simulator propagates an ideal Gaussian. |
 | 7 | Layer cards 3–4 | Same criteria as WP 2. |
 | 8 | Pilot (owner, not the implementer) | One FP-2 group and one BSc thesis student use the page. Stall points are recorded and acted on. |
 
@@ -165,7 +165,7 @@ The Linux and Windows camera validation sessions need hardware and a person at t
 ## 5. Content rules
 
 - **No invented numbers.** Quote values only from the tools, the tests or a cited source. Every quoted number has a CI assertion (WP 5).
-- **Showcase geometry.** The presets are labelled "from Friedenauer et al. (2006), under review" until §3 and Table 1 have been checked against the full text and the check is logged.
+- **Showcase geometry.** The presets are labelled "from Friedenauer et al. (2006), under review" wherever they appear, including the simulator's own reference line, which currently says "Published", until §3 and Table 1 have been checked against the full text and the check is logged.
 - **Supported systems.** Don't claim Linux or Windows camera support before its validation session.
 - **Reuse.** Link to the README for methods; don't duplicate it.
 
