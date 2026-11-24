@@ -26,6 +26,21 @@ export function imagingSeed(target, w0, wavelength, f) {
   return {delta: (w0 / wt) * s, D: f + (wt / w0) * s + past};
 }
 
+// The best overlap any round Gaussian beam can reach with the target. Below
+// one only if the target's tangential and sagittal modes differ.
+export function roundBound(target) {
+  const eta = (z, zR) => {
+    const q = {re: z, im: zR};
+    return axisOverlap(q, target[0]) * axisOverlap(q, target[1]);
+  };
+  const zRs = target.map(q => q.im), zs = target.map(q => q.re);
+  const zLo = Math.min(...zs) - 2 * Math.max(...zRs), zHi = Math.max(...zs) + 2 * Math.max(...zRs);
+  const bestZ = zR => golden(z => eta(z, zR), zLo, zHi, 1e-9 * (1 + zHi - zLo));
+  const lo = Math.log(Math.min(...zRs) / 2), hi = Math.log(2 * Math.max(...zRs));
+  const u = golden(v => eta(bestZ(Math.exp(v)), Math.exp(v)), lo, hi, 1e-12);
+  return eta(bestZ(Math.exp(u)), Math.exp(u));
+}
+
 // Read the launch from a path: collimator = first lens, tip at z = 0.
 export function launchGeometry(path) {
   if (path.lenses.length !== 1) throw Error('The fibre launch uses the collimator alone. Remove the other lenses to use it.');
@@ -140,7 +155,9 @@ export function solveLaunch(path, target, launch, {lockFocus = false} = {}) {
     D: {minus: edge(distance, best.D, -1, level, best.D - minDistance),
       plus: edge(distance, best.D, 1, level, maxDistance - best.D)}
   };
-  return {...best, ceiling, tolerance, limits};
+  const zR = (target[0].im + target[1].im) / 2;
+  const f0 = Math.PI * w0 * Math.sqrt(lam * zR / Math.PI) / lam;
+  return {...best, ceiling, round: Math.max(roundBound(target), ceiling), f0, tolerance, limits};
 }
 
 // Power through a circular clear aperture of diameter a (mm) at the lens.

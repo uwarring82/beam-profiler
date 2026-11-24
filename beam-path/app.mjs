@@ -165,10 +165,16 @@ function analyze(){
   $('search').disabled=!target||!!worker||!path.lenses.some(l=>!l.locked);
   if (ref.cavity) {
     const problem = launchProblem();
+    if (problem) {
+      // Do not show results computed from the last valid values.
+      beamValid = false;
+      $('overlap').textContent = '—';
+      setModeValues('', null);
+    }
     let state = problem, blocked = !!problem;
     if (!problem) try {
       const {w, transmission} = apertureTransmission(path, path.launch.aperture);
-      state = 'Beam radius at the coupler lens '+fmt(w, 3)+' mm. The '+fmt(path.launch.aperture, 2)+' mm clear aperture passes '+(100*transmission).toFixed(transmission > 0.9999 ? 4 : 2)+'% of the power.'
+      state = 'Beam radius at the coupler lens '+fmt(w, 3)+' mm. The '+fmt(path.launch.aperture, 2)+' mm clear aperture passes '+share(transmission)+' of the power.'
         + (path.lenses[0]?.locked ? ' L1 is locked: the search changes only the distance.' : '');
     } catch (e) { state = e.message; blocked = true; }
     $('solve-launch').disabled = !target || blocked;
@@ -255,6 +261,8 @@ function launchProblem() {
   }
   return message;
 }
+// Power fractions near one: "more than 99.9999%" rather than a rounded 100%.
+const share = x => x > 0.999999 ? 'more than 99.9999%' : (100*x).toFixed(x > 0.9999 ? 4 : 2)+'%';
 function listText(items) {
   return items.length < 2 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items.at(-1);
 }
@@ -315,9 +323,12 @@ if (ref.cavity) {
       const examples = unconfirmed();
       if (examples.length) parts.push('With example values for the '+listText(examples)+':');
       parts.push('Ideal, unclipped spatial overlap '+percent(found.eta)+' (previously '+percent(before)+'), with the fibre tip at f '+(found.delta >= 0 ? '+ ' : '− ')+fmt(1000*Math.abs(found.delta), 1)+' µm from the lens and the lens '+fmt(found.D, 1)+' mm from the input coupler.');
-      parts.push('The '+fmt(path.launch.aperture, 2)+' mm clear aperture passes '+(100*transmission).toFixed(transmission > 0.9999 ? 4 : 2)+'% of the power here, so at most '+percent(found.eta*transmission)+' of the incident power can couple into the cavity mode.'+(transmission < 0.99 ? ' Use a larger clear aperture or a shorter focal length.' : ''));
+      // Transmission alone bounds the coupled power. Clipping also changes the
+      // overlap itself, in either direction, so the two are not multiplied.
+      parts.push('Separately, the '+fmt(path.launch.aperture, 2)+' mm clear aperture passes '+share(transmission)+' of the power, so no more than that can couple.'+(transmission < 0.99 ? ' Clipping also changes the overlap itself, which the ideal figure leaves out. Use a larger clear aperture or a shorter focal length.' : ''));
       if (found.limits.length) parts.push('Active '+(found.limits.length === 1 ? 'limit' : 'limits')+': '+listText(found.limits.map(l => l === 'locked focus' ? 'the locked coupler focus' : 'the '+l))+'. Without '+(found.limits.length === 1 ? 'it' : 'them')+' the overlap could reach '+percent(found.ceiling)+'.');
-      if (1 - found.ceiling > 1e-4) parts.push((found.limits.length ? 'Even then, ' : 'The remaining ')+loss(1 - found.ceiling)+' is lost because a round fibre beam cannot follow the difference between the cavity mode\'s tangential and sagittal planes.');
+      if (1 - found.round > 1e-4) parts.push('Even an ideal round beam reaches at most '+percent(found.round)+' here, because the cavity mode differs between its tangential and sagittal planes.');
+      if (found.round - found.ceiling > 1e-4) parts.push((found.limits.length ? 'Even without the limits, this' : 'This')+' fibre and lens leave a residual mismatch of '+loss(1 - found.ceiling/found.round)+(path.lenses[0].f < found.f0 ? ', because the focal length is shorter than the '+fmt(found.f0, 2)+' mm needed to image the fibre mode onto the target waist.' : '.'));
       // One-sided where a stop is active: name the stop instead of a number.
       const change = (name, {minus, plus}, scale, unit, lowStop, highStop) => {
         const values = [], notes = [];
@@ -326,12 +337,16 @@ if (ref.cavity) {
           else if (v === null) notes.push('the '+stop+' blocks '+way);
           else notes.push(way+' stays within 1% up to the '+stop);
         }
-        return 'a '+name+' change of '+(values.length ? values.join(' or ') : 'any size')+(notes.length ? ' ('+notes.join('; ')+')' : '');
+        return values.length ? 'a '+name+' change of '+values.join(' or ')+(notes.length ? ' ('+notes.join('; ')+')' : '') : null;
       };
-      const t = found.tolerance, changes = [];
-      if (t.delta) changes.push(change('focus', t.delta, 1000, 'µm', 'travel stop', 'travel stop'));
-      changes.push(change('distance', t.D, 1, 'mm', 'shortest distance', 'longest distance'));
-      parts.push('The overlap falls by 1% with '+changes.join(', or ')+'.');
+      const t = found.tolerance, changes = [], whole = [];
+      for (const [name, tol, scale, unit, low, high] of [['focus', t.delta, 1000, 'µm', 'travel stop', 'travel stop'], ['distance', t.D, 1, 'mm', 'shortest distance', 'longest distance']]) {
+        if (!tol) continue;
+        const clause = change(name, tol, scale, unit, low, high);
+        if (clause) changes.push(clause); else whole.push(name);
+      }
+      if (changes.length) parts.push('The overlap falls by 1% with '+changes.join(', or ')+'.');
+      if (whole.length) parts.push('The overlap stays within 1% throughout the allowed '+listText(whole)+' range.');
       if (locked) parts.push('L1 is locked, so only the distance changed.');
       result.textContent = parts.join(' ');
     } catch (e) { result.textContent = e.message; }

@@ -222,7 +222,7 @@ test('A touch can grab the nearest lens across a 44 px target without moving the
   assert.equal(pick(179, 40, 'mouse'), path.lenses[0]);
 });
 
-import {applyLaunch, apertureTransmission, imagingSeed, launchGeometry, launchOverlap, solveLaunch} from '../beam-path/fiber.mjs';
+import {applyLaunch, apertureTransmission, imagingSeed, launchGeometry, launchOverlap, roundBound, solveLaunch} from '../beam-path/fiber.mjs';
 
 test('The fibre showcase launches a round fibre mode through one collimator into the LBO cavity', () => {
   const p = showcase('fiber'), ref = showcases.fiber;
@@ -305,4 +305,51 @@ test('Clear-aperture transmission follows the Gaussian power inside a circle', (
   const {w, transmission} = apertureTransmission(p, 2);
   close(w, spot(drift(waistQ(3.3, 1118), 11), 1118).w / 1000);
   close(transmission, 1 - Math.exp(-2 / (w*w)));
+});
+
+test('Astigmatism is credited only when the target modes differ (review regression)', () => {
+  const p = showcase('fiber');
+  assert.ok(roundBound(targetMode(p).q) < 0.9995);                    // LBO: tangential and sagittal differ
+  close(roundBound(targetMode(p).q), solveLaunch(p, targetMode(p).q, p.launch).eta, 1e-6);
+  p.targetType = 'waists'; p.target = {t: {w: 200, z: 0}, s: {w: 200, z: 0}};
+  p.source = {t: {w: 5, z: 0}, s: {w: 5, z: 0}}; p.lenses[0].f = 2; p.lenses[0].z = 2; p.length = 602;
+  const target = targetMode(p).q, found = solveLaunch(p, target, p.launch);
+  close(found.round, 1, 1e-9);                                           // a round target: no astigmatic loss
+  assert.ok(found.f0 > 2 && found.eta < 0.95, found.f0+' '+found.eta); // the lens is too short to image the mode
+});
+
+test('Aperture transmission bounds the clipped coupling; the product with the ideal overlap does not', () => {
+  // Integrate the clipped input field against the cavity mode traced back to the lens.
+  const p = showcase('fiber'), target = targetMode(p).q, delta = 0.05, D = 1500, aperture = 3, lam = 1118;
+  const k = 2*Math.PI/(lam*1e-6), qin = lensQ(drift(waistQ(3.3, lam), 11 + delta), 11), qt = target.map(q => drift(q, -D));
+  const expo = (q, x) => { const d = q.re*q.re + q.im*q.im, c = -k*x*x/2; return [c*q.im/d, c*q.re/d]; };
+  const field = (qx, qy, x, y) => { const [a, b] = expo(qx, x), [c, e] = expo(qy, y), m = Math.exp(a + c); return [m*Math.cos(b + e), m*Math.sin(b + e)]; };
+  const n = 600, R = 12, h = 2*R/n; let pin = 0, pt = 0, sr = 0, si = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = -R + (i + .5)*h, y = -R + (j + .5)*h, [ar, ai] = field(qin, qin, x, y), [br, bi] = field(qt[0], qt[1], x, y);
+    pin += ar*ar + ai*ai; pt += br*br + bi*bi;
+    if (x*x + y*y <= aperture*aperture/4) { sr += ar*br + ai*bi; si += ai*br - ar*bi; }
+  }
+  const coupled = (sr*sr + si*si)/(pin*pt), ideal = launchOverlap(target, 3.3, lam, 11, delta, D);
+  applyLaunch(p, delta, D);
+  const {transmission} = apertureTransmission(p, aperture);
+  assert.ok(coupled <= transmission, coupled+' > '+transmission);
+  assert.ok(coupled > ideal*transmission && coupled > ideal, coupled+' vs '+ideal*transmission);
+});
+
+test('A fibre link saved before datasheet confirmations keeps its optics', () => {
+  const p = showcase('fiber');
+  p.source = {t: {w: 3.7, z: 0}, s: {w: 3.7, z: 0}}; p.lenses[0].f = 8; p.lenses[0].z = 8.1; p.length = 500;
+  delete p.launch.confirmed; p.launch.travel = 0.3;
+  const link = 'https://x/beam-path/?stage=fiber#layout=' + encodeURIComponent(JSON.stringify({v: 1, path: p, gap: 10}));
+  const opened = openLayout(new URL(link));
+  assert.equal(opened.notice, ''); assert.equal(opened.path.source.t.w, 3.7); assert.equal(opened.path.lenses[0].f, 8);
+  assert.equal(opened.path.launch.travel, 0.3);
+  assert.deepEqual(opened.path.launch.confirmed, {mfd: false, f: false, travel: false, aperture: false});
+});
+
+test('A bench range narrower than the 1% tolerance has no edge on either side', () => {
+  const p = showcase('fiber'), target = targetMode(p).q;
+  const found = solveLaunch(p, target, {...p.launch, minDistance: 735.37, maxDistance: 735.39});
+  for (const side of [found.tolerance.D.minus, found.tolerance.D.plus]) assert.ok(side === null || side === Infinity);
 });
